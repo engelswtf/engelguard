@@ -7,12 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Dashboard UI**: Fixed modal popup spacing for Add Command, Add Timer, Add Quote, and Start Giveaway modals (2025-12-07)
+  - Added proper padding to forms that are direct children of `.modal-content`
+  - Form padding: 1.5rem top/bottom, 3rem left/right
+  - Modal footer extends full width using negative margin technique
+  - Form field spacing increased to 1.5rem for better readability
+
 ### Operations
 - Added comprehensive operations documentation for container-to-GitHub sync workflow
 - Documented git state verification and synchronization procedures
 - Created runbook for managing bot deployment in Proxmox LXC container 101
 
-## [1.0.0] - 2024-12-07
+## [1.0.0] - 2025-12-07
 
 ### Added
 
