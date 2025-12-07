@@ -267,6 +267,16 @@ a:hover {
     background-color: var(--danger);
 }
 
+.status-uptime {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-left: var(--spacing-xs);
+}
+
+.bot-status.online .status-uptime {
+    color: var(--text-secondary);
+}
+
 .content {
     flex: 1;
     padding: var(--spacing-xl);

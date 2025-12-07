@@ -57,6 +57,34 @@ function initBotStatus() {
                     statusElement.classList.add('offline');
                     text.textContent = 'Offline';
                 }
+                
+                // Update uptime in top bar
+                const uptimeTopBar = document.getElementById('botUptimeTopBar');
+                if (uptimeTopBar && data.uptime) {
+                    uptimeTopBar.textContent = data.is_running ? '• ' + data.uptime : '';
+                }
+                
+                // Update uptime in dashboard status card (if on dashboard page)
+                const uptimeDashboard = document.getElementById('botUptime');
+                if (uptimeDashboard && data.uptime) {
+                    uptimeDashboard.textContent = data.uptime;
+                }
+                
+                // Also update the dashboard status indicator if present
+                const statusIndicator = document.querySelector('.status-indicator');
+                if (statusIndicator) {
+                    if (data.is_running) {
+                        statusIndicator.classList.add('online');
+                        statusIndicator.classList.remove('offline');
+                    } else {
+                        statusIndicator.classList.remove('online');
+                        statusIndicator.classList.add('offline');
+                    }
+                    const statusLabel = statusIndicator.querySelector('.status-label');
+                    if (statusLabel) {
+                        statusLabel.textContent = data.status;
+                    }
+                }
             })
             .catch(err => {
                 console.error('Failed to fetch bot status:', err);
