@@ -1295,7 +1295,8 @@ a:hover {
     justify-content: center;
 }
 
-.modal.show {
+.modal.show,
+.modal.active {
     display: flex;
 }
 
@@ -1691,4 +1692,27 @@ td .badge {
     font-size: 0.875rem;
     height: auto;
     line-height: 1.5;
+}
+
+/* ==========================================
+   Modal Form Padding Fix
+   Issue: Modal forms (Add Command, Add Timer, Add Quote, Start Giveaway)
+   are direct children of .modal-content, not wrapped in .modal-body,
+   so they need explicit padding rules.
+   Added: 2025-12-07
+   ========================================== */
+
+/* Form padding inside modals (when form is direct child of modal-content) */
+.modal-content > form {
+    padding: 1.5rem 3rem;
+}
+
+.modal-content > form .modal-footer {
+    margin: 0 -3rem;
+    padding: 1.75rem 3rem;
+}
+
+/* More space between form fields in modals */
+.modal-content > form .form-group {
+    margin-bottom: 1.5rem;
 }
