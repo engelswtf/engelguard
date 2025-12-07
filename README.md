@@ -2,140 +2,197 @@
 
 # 🛡️ EngelGuard
 
-### A Professional-Grade Twitch Moderation Bot
+### Your Stream, Your Bot, Your Rules
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![TwitchIO](https://img.shields.io/badge/TwitchIO-2.x-9146FF.svg)](https://github.com/TwitchIO/TwitchIO)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TwitchIO](https://img.shields.io/badge/TwitchIO-2.x-9146FF.svg)](https://github.com/TwitchIO/TwitchIO)
+[![Self-Hosted](https://img.shields.io/badge/self--hosted-100%25-green.svg)](https://github.com/engelswtf/engelguard)
 
-**EngelGuard** is a feature-rich, production-ready Twitch chat bot built with Python and TwitchIO. It rivals top bots like Nightbot, Fossabot, and StreamElements with advanced moderation, custom commands, loyalty systems, and more.
+**EngelGuard is a feature-rich, production-ready Twitch chat bot built with Python and TwitchIO.**  
+It rivals top bots like Nightbot, Fossabot, and StreamElements with advanced moderation, custom commands, loyalty systems, and more — all completely free and open-source.
 
-[Features](#-features) • [Installation](#-installation) • [Commands](#-commands) • [Dashboard](#-dashboard) • [Configuration](#-configuration)
+[Why EngelGuard?](#-why-engelguard) • [Features](#-features) • [Quick Start](#-quick-start) • [Dashboard](#-web-dashboard) • [Docs](#-documentation)
 
 </div>
 
 ---
 
+## 🎯 Why EngelGuard?
+
+Tired of paying for Nightbot Premium? Frustrated by StreamElements' limitations? Want more control than Moobot offers?
+
+**EngelGuard is built for small streamers who want:**
+
+- ✅ **Zero Monthly Costs** - Free forever, no premium upsells
+- ✅ **Complete Control** - Self-hosted on YOUR Linux machine
+- ✅ **Privacy First** - Your data stays on your server, not theirs
+- ✅ **Full Customization** - Open source means you can modify anything
+- ✅ **Modern Web Dashboard** - Manage everything without typing chat commands
+- ✅ **No Vendor Lock-In** - Export your data anytime, switch whenever you want
+
+### 📊 Quick Comparison
+
+| Feature | EngelGuard | Nightbot | StreamElements | Moobot |
+|---------|------------|----------|----------------|--------|
+| **Cost** | **Free Forever** | Free + Premium ($10/mo) | Free + Premium | Free + Premium |
+| **Self-Hosted** | ✅ **Yes** | ❌ Cloud Only | ❌ Cloud Only | ❌ Cloud Only |
+| **Open Source** | ✅ **MIT License** | ❌ Proprietary | ❌ Proprietary | ❌ Proprietary |
+| **Your Data** | ✅ **You Own It** | ❌ Their Servers | ❌ Their Servers | ❌ Their Servers |
+| **Custom Commands** | ✅ Unlimited | ✅ Limited (25 free) | ✅ Limited | ✅ Limited |
+| **Timers** | ✅ Unlimited | ✅ Limited (5 free) | ✅ Limited | ✅ Limited |
+| **Loyalty Points** | ✅ Built-in | ❌ Premium Only | ✅ Yes | ❌ No |
+| **Song Requests** | ✅ Built-in | ❌ Premium Only | ✅ Yes | ✅ Yes |
+| **Giveaways** | ✅ Built-in | ❌ Premium Only | ✅ Yes | ❌ No |
+| **Quotes System** | ✅ Built-in | ❌ No | ✅ Yes | ✅ Yes |
+| **Advanced AutoMod** | ✅ Lookalike Detection | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic |
+| **Strike System** | ✅ Full Control | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited |
+| **Web Dashboard** | ✅ Full-Featured | ✅ Yes | ✅ Yes | ✅ Yes |
+| **API Access** | ✅ **Full Access** | ❌ Premium Only | ⚠️ Limited | ❌ No |
+
+**The catch?** You need a Linux machine (even a $5/month VPS works!) and basic technical skills. If you can follow a tutorial, you can run EngelGuard.
+
+---
+
 ## ✨ Features
 
+EngelGuard packs **13 feature modules** that rival (and often exceed) what paid bots offer:
+
 ### 🛡️ Advanced Auto-Moderation
-- **Smart Spam Detection** - Catches spam with pattern matching, lookalike detection, and scoring system
-- **Lookalike Detection** - Catches evasion attempts like "fr33 f0ll0w3rs" → "free followers"
-- **Strike System** - Escalating punishments (warn → timeout → ban) with configurable thresholds
+- **Smart Spam Detection** - Pattern matching with scoring system
+- **Lookalike Detection** - Catches "fr33 f0ll0w3rs" → "free followers" evasion
+- **Strike System** - Escalating punishments (warn → timeout → ban)
 - **Nuke Command** - Mass moderation for raid attacks with safety features
 - **Configurable Filters** - Caps, symbols, emotes, links, message length
+- **Subscriber Protection** - Subs immune to auto-bans (configurable)
 
-### 📝 Custom Commands
+### 📝 Custom Commands & Timers
+- **Unlimited Commands** - No artificial limits (unlike Nightbot's 25)
 - **20+ Variables** - `$(user)`, `$(channel)`, `$(random)`, `$(time)`, `$(urlfetch)`, and more
 - **Permission Levels** - Everyone, Follower, Subscriber, VIP, Moderator, Owner
 - **Cooldowns** - Per-user and global cooldowns
 - **Aliases** - Multiple names for the same command
-- **Dashboard Management** - Create and edit commands via web UI
+- **Unlimited Timers** - Automated messages with chat activity detection
 
-### ⏰ Timers & Scheduled Messages
-- **Interval-Based** - Post messages every X minutes
-- **Chat Activity Requirement** - Only post when chat is active
-- **Online-Only Mode** - Only run when stream is live
-- **Variable Support** - Use all command variables in timer messages
-
-### 🏆 Loyalty System (Optional)
-- **Watch Time Tracking** - Track how long viewers watch
-- **Points System** - Earn points for watching and chatting
+### 🏆 Loyalty & Engagement
+- **Points System** - Viewers earn points for watching and chatting
+- **Watch Time Tracking** - Track viewer engagement
 - **Leaderboards** - Show top viewers
 - **Multipliers** - Bonus points for subscribers and VIPs
 - **Fully Toggleable** - Enable/disable anytime
+
+### 🎁 Giveaways
+- **Keyword Entry** - Viewers enter with `!enter` or custom keyword
+- **Subscriber Luck** - Give subs extra entries (configurable multiplier)
+- **Auto-End Timer** - Giveaways end automatically
+- **Winner Selection** - Random, fair selection from all entries
+- **Dashboard Management** - Create and manage giveaways from web UI
+
+### 💬 Quotes System
+- **Save Memorable Moments** - `!addquote` to capture funny/epic moments
+- **Random Quotes** - `!quote` shows a random quote
+- **Quote Search** - `!quote 42` shows specific quote by ID
+- **Dashboard Management** - View, edit, delete quotes from web UI
+
+### 🎵 Song Requests
+- **YouTube Integration** - Viewers request songs with `!sr <YouTube URL>`
+- **Queue Management** - `!queue`, `!skip`, `!clear` commands
+- **Volume Control** - Adjust playback volume
+- **Auto-Play** - Queue plays automatically
+- **Dashboard Control** - Manage queue from web UI
 
 ### 🎬 Stream Integration
 - **Clip Creation** - Create clips via chat command
 - **Title/Game Management** - View and change stream info
 - **Uptime Display** - Show stream duration
 - **Shoutouts** - Give shoutouts to other streamers
+- **Followage** - Check how long someone has been following
 
-### 🌐 Web Dashboard
-- **Modern Dark Theme** - Twitch-inspired design
-- **Real-Time Stats** - Live bot status and activity
-- **Full Management** - Commands, timers, filters, users
+### 🎮 Fun Commands
+- **Dice Rolls** - D&D notation support (`!dice 2d20+5`)
+- **Magic 8-Ball** - Ask questions, get answers
+- **Coin Flip** - Heads or tails
+- **Rock Paper Scissors** - Play against the bot
+- **Hugs & Slaps** - Interactive fun commands
+- **Random Choice** - `!choose pizza, burger, tacos`
+
+### 🌐 Modern Web Dashboard
+- **Dark Theme UI** - Twitch-inspired design
+- **Real-Time Stats** - Live bot status, uptime, and activity
+- **Full Management** - Commands, timers, filters, users, quotes, giveaways, songs
 - **Mobile Responsive** - Works on all devices
 - **Secure Login** - Password-protected access
+- **Toggle Features** - Enable/disable any module with one click
 
 ---
 
-## 📦 Installation
+## 🚀 Quick Start
 
-### Prerequisites
-- Python 3.11 or higher
-- A Twitch account for the bot
-- Twitch Developer Application credentials
+### What You Need
 
-### Quick Install
+- **Linux System** - Debian/Ubuntu recommended (or any Linux distro)
+  - Local machine, Raspberry Pi, or VPS ($5/month gets you started)
+- **Python 3.10+** - Usually pre-installed on modern Linux
+- **Twitch Account** - For the bot (can be a separate account)
+- **10 Minutes** - That's all it takes to get running
+
+### Installation
+
+**Full installation guide:** [INSTALLATION.md](INSTALLATION.md)
 
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/engelswtf/engelguard.git
 cd engelguard
 
-# Run the installer
+# 2. Run the installer (handles everything automatically)
 sudo ./scripts/install.sh
 
-# Configure your credentials
+# 3. Configure your Twitch credentials
 sudo nano /opt/twitch-bot/.env
 
-# Start the bot
+# 4. Start the bot and dashboard
 sudo systemctl enable twitch-bot twitch-dashboard
 sudo systemctl start twitch-bot twitch-dashboard
+
+# 5. Access the dashboard
+# Open http://your-server-ip:5000 in your browser
 ```
 
 ### Get Twitch Credentials
 
 1. **Client ID & Secret**: [Twitch Developer Console](https://dev.twitch.tv/console/apps)
+   - Create a new application
+   - Set OAuth Redirect URL to `http://localhost`
+   
 2. **OAuth Token**: [Twitch Token Generator](https://twitchtokengenerator.com/)
-   - Required scopes: `chat:read`, `chat:edit`, `channel:moderate`, `clips:edit`
+   - Required scopes: `chat:read`, `chat:edit`, `channel:moderate`, `clips:edit`, `moderator:manage:banned_users`
 
-### Configuration
-
-Edit `/opt/twitch-bot/.env`:
-
-```env
-# Required
-TWITCH_CLIENT_ID=your_client_id
-TWITCH_CLIENT_SECRET=your_client_secret
-TWITCH_OAUTH_TOKEN=oauth:your_token
-TWITCH_BOT_NICK=your_bot_username
-TWITCH_CHANNELS=your_channel
-BOT_OWNER=your_twitch_username
-
-# Dashboard
-DASHBOARD_PASSWORD=your_secure_password
-
-# Optional
-BOT_PREFIX=!
-LOG_LEVEL=INFO
-```
+**Need help?** Check out our [Quick Start Guide](QUICKSTART.md) for detailed step-by-step instructions.
 
 ---
 
-## 🎮 Commands
+## 🎮 Core Commands
 
 ### Fun Commands
 | Command | Description | Example |
 |---------|-------------|---------|
-| `!dice [sides]` | Roll dice (supports D&D notation) | `!dice 2d6` |
+| `!dice [sides]` | Roll dice (D&D notation supported) | `!dice 2d6+3` |
 | `!8ball <question>` | Ask the magic 8-ball | `!8ball Will I win?` |
 | `!coinflip` | Flip a coin | `!coinflip` |
 | `!hug @user` | Give someone a hug | `!hug @streamer` |
 | `!rps <choice>` | Rock, paper, scissors | `!rps rock` |
-| `!choose <options>` | Random choice | `!choose pizza, burger` |
-| `!hello` | Friendly greeting | `!hello` |
+| `!choose <options>` | Random choice from list | `!choose pizza, burger, tacos` |
 
 ### Stream Commands
 | Command | Description | Permission |
 |---------|-------------|------------|
 | `!uptime` | Show stream uptime | Everyone |
-| `!title [new]` | View/change title | View: All, Change: Mod |
-| `!game [new]` | View/change game | View: All, Change: Mod |
+| `!title [new]` | View/change stream title | View: All, Change: Mod |
+| `!game [new]` | View/change game category | View: All, Change: Mod |
 | `!clip [duration]` | Create a clip | Everyone |
-| `!shoutout @user` | Shoutout streamer | Mod |
-| `!followage [@user]` | Check follow age | Everyone |
+| `!shoutout @user` | Shoutout another streamer | Mod |
+| `!followage [@user]` | Check follow duration | Everyone |
 
 ### Moderation Commands
 | Command | Description | Permission |
@@ -143,224 +200,277 @@ LOG_LEVEL=INFO
 | `!timeout @user [sec] [reason]` | Timeout user | Mod |
 | `!ban @user [reason]` | Ban user | Mod |
 | `!unban @user` | Unban user | Mod |
-| `!permit @user` | Allow 1 link (60s) | Mod |
-| `!nuke "pattern" [duration]` | Mass timeout/ban | Mod |
-| `!strikes @user` | View user strikes | Mod |
-| `!clearstrikes @user` | Clear strikes | Mod |
+| `!permit @user` | Allow 1 link (60s window) | Mod |
+| `!nuke "pattern" [duration]` | Mass timeout/ban matching users | Mod |
+| `!strikes @user` | View user's strike count | Mod |
+| `!clearstrikes @user` | Clear user's strikes | Mod |
 
 ### Custom Commands
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `!addcmd <name> <response>` | Create command | Mod |
-| `!editcmd <name> <response>` | Edit command | Mod |
+| `!addcmd <name> <response>` | Create custom command | Mod |
+| `!editcmd <name> <response>` | Edit existing command | Mod |
 | `!delcmd <name>` | Delete command | Mod |
-| `!commands` | List all commands | Everyone |
+| `!commands` | List all custom commands | Everyone |
 | `!cmdinfo <name>` | View command details | Mod |
 
-### Timer Commands
+### Loyalty System
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `!addtimer <name> <min> <msg>` | Create timer | Mod |
-| `!timertoggle <name>` | Enable/disable | Mod |
-| `!timers` | List all timers | Mod |
-
-### Loyalty Commands
-| Command | Description | Permission |
-|---------|-------------|------------|
-| `!points [@user]` | Check points | Everyone |
+| `!points [@user]` | Check points balance | Everyone |
 | `!watchtime [@user]` | Check watch time | Everyone |
-| `!top [count]` | Leaderboard | Everyone |
-| `!loyalty on/off` | Toggle system | Owner |
+| `!top [count]` | Show leaderboard | Everyone |
+| `!loyalty on/off` | Toggle loyalty system | Owner |
 
-### Admin Commands
+### Quotes
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `!automod on/off` | Toggle automod | Owner |
-| `!automod status` | View status | Mod |
-| `!botinfo` | Bot information | Owner |
-| `!ping` | Check latency | Owner |
+| `!quote [id]` | Show random or specific quote | Everyone |
+| `!addquote <text>` | Add a new quote | Mod |
+| `!delquote <id>` | Delete a quote | Mod |
+| `!editquote <id> <text>` | Edit existing quote | Mod |
+
+### Giveaways
+| Command | Description | Permission |
+|---------|-------------|------------|
+| `!giveaway start <prize>` | Start a giveaway | Mod |
+| `!giveaway end` | End giveaway & pick winner | Mod |
+| `!enter` | Enter current giveaway | Everyone |
+| `!giveaway status` | Check giveaway status | Everyone |
+
+### Song Requests
+| Command | Description | Permission |
+|---------|-------------|------------|
+| `!sr <YouTube URL>` | Request a song | Everyone |
+| `!queue` | Show song queue | Everyone |
+| `!skip` | Skip current song | Mod |
+| `!clear` | Clear song queue | Mod |
+| `!volume <0-100>` | Adjust volume | Mod |
+
+**Full command list:** [COMMANDS.md](docs/COMMANDS.md)
 
 ---
 
-## 🌐 Dashboard
+## 🌐 Web Dashboard
 
-Access the web dashboard at `http://your-server-ip:5000`
+Access at `http://your-server-ip:5000` (default password: set during installation)
 
-### Pages
+### Dashboard Pages
 
-| Page | Description |
-|------|-------------|
-| **Dashboard** | Bot status, stats, recent activity |
-| **Settings** | Bot configuration, cog toggles |
-| **Commands** | Create/edit custom commands |
-| **Timers** | Manage scheduled messages |
-| **Filters** | Configure spam filters |
-| **Mod Log** | View moderation actions |
-| **Users** | User management, trust scores |
-| **Strikes** | View/manage user strikes |
-| **Loyalty** | Points settings, leaderboard |
-| **Credentials** | Update Twitch API keys |
+| Page | What You Can Do |
+|------|-----------------|
+| **🏠 Dashboard** | View bot status, uptime, recent activity, quick stats |
+| **⚙️ Settings** | Toggle features on/off, configure bot behavior |
+| **📝 Commands** | Create, edit, delete custom commands with variables |
+| **⏰ Timers** | Manage automated messages and intervals |
+| **🛡️ Filters** | Configure spam filters, caps limits, link whitelist |
+| **👥 Users** | View user list, trust scores, manage permissions |
+| **⚠️ Strikes** | View and manage user strike history |
+| **📋 Mod Log** | See all moderation actions (bans, timeouts, warnings) |
+| **🏆 Loyalty** | Configure points system, view leaderboard |
+| **💬 Quotes** | Browse, add, edit, delete quotes |
+| **🎁 Giveaways** | Create and manage giveaways |
+| **🎵 Song Requests** | View and manage song queue |
+| **🔑 Credentials** | Update Twitch API keys and tokens |
 
----
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TWITCH_CLIENT_ID` | *required* | Twitch app client ID |
-| `TWITCH_CLIENT_SECRET` | *required* | Twitch app client secret |
-| `TWITCH_OAUTH_TOKEN` | *required* | Bot OAuth token |
-| `TWITCH_BOT_NICK` | *required* | Bot username |
-| `TWITCH_CHANNELS` | *required* | Channels to join (comma-separated) |
-| `BOT_OWNER` | *required* | Your Twitch username |
-| `BOT_PREFIX` | `!` | Command prefix |
-| `DASHBOARD_PASSWORD` | `changeme123` | Dashboard login password |
-| `LOG_LEVEL` | `INFO` | Logging level |
-| `LOYALTY_ENABLED` | `false` | Enable loyalty system |
-| `STRIKE_EXPIRE_DAYS` | `30` | Days until strikes expire |
-| `STRIKE_MAX_BEFORE_BAN` | `5` | Strikes before auto-ban |
-
-### Spam Filter Settings
-
-Configure via dashboard or database:
-
-| Filter | Default | Description |
-|--------|---------|-------------|
-| Caps | 70% | Max uppercase percentage |
-| Emotes | 15 | Max emotes per message |
-| Symbols | 50% | Max symbol percentage |
-| Length | 500 | Max message length |
-| Links | Whitelist | Allowed domains |
+**Mobile-friendly** - Manage your bot from your phone!
 
 ---
 
-## 📁 Project Structure
+## 📚 Documentation
 
-```
-engelguard/
-├── src/bot/
-│   ├── __init__.py          # Package init, entry point
-│   ├── bot.py               # Main bot class
-│   ├── config.py            # Configuration management
-│   ├── cogs/
-│   │   ├── admin.py         # Admin commands
-│   │   ├── automod.py       # Auto-moderation
-│   │   ├── clips.py         # Stream commands
-│   │   ├── customcmds.py    # Custom commands
-│   │   ├── fun.py           # Fun commands
-│   │   ├── info.py          # Info commands
-│   │   ├── loyalty.py       # Points system
-│   │   ├── moderation.py    # Mod commands
-│   │   ├── nuke.py          # Mass moderation
-│   │   └── timers.py        # Scheduled messages
-│   └── utils/
-│       ├── database.py      # SQLite manager
-│       ├── logging.py       # Logging setup
-│       ├── permissions.py   # Permission decorators
-│       ├── spam_detector.py # Spam detection
-│       ├── strikes.py       # Strike system
-│       └── variables.py     # Command variables
-├── dashboard/
-│   ├── app.py               # Flask application
-│   ├── templates/           # HTML templates
-│   └── static/              # CSS, JS assets
-├── scripts/
-│   ├── install.sh           # Installation script
-│   ├── update.sh            # Update script
-│   └── verify.sh            # Verification script
-├── systemd/
-│   ├── twitch-bot.service   # Bot service
-│   └── twitch-dashboard.service
-├── data/                    # SQLite databases
-├── .env.example             # Example configuration
-├── requirements.txt         # Python dependencies
-└── README.md                # This file
-```
+- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 10 minutes
+- **[Installation Guide](INSTALLATION.md)** - Detailed setup instructions
+- **[Commands Reference](docs/COMMANDS.md)** - Complete command list
+- **[Deployment Guide](DEPLOYMENT.md)** - Production deployment tips
+- **[Project Status](docs/PROJECT_STATUS.md)** - Current features and roadmap
 
 ---
 
-## 🔒 Security Features
+## 🔧 System Requirements
 
+### Minimum
+- **OS**: Any Linux distribution (Debian/Ubuntu recommended)
+- **RAM**: 512 MB
+- **CPU**: 1 core
+- **Disk**: 500 MB
+- **Network**: Stable internet connection
+
+### Recommended
+- **OS**: Ubuntu 22.04 LTS or Debian 12
+- **RAM**: 1 GB
+- **CPU**: 2 cores
+- **Disk**: 2 GB (for logs and database growth)
+
+### Where to Host
+- **Local Machine** - Old laptop, desktop, or Raspberry Pi
+- **VPS** - DigitalOcean, Linode, Vultr ($5-10/month)
+- **Home Server** - Any Linux box on your network
+- **Cloud** - AWS, Google Cloud, Azure (free tier eligible)
+
+---
+
+## 🔒 Security & Privacy
+
+### Your Data, Your Control
+- **No Telemetry** - We don't track you or your viewers
+- **No External Dependencies** - All data stored locally in SQLite
+- **No Cloud Services** - Everything runs on YOUR server
+- **Open Source** - Audit the code yourself
+
+### Security Features
 - **Secret Filtering** - Tokens never appear in logs
 - **Non-Root Execution** - Runs as dedicated `twitchbot` user
 - **Systemd Hardening** - Sandboxed with resource limits
-- **Session Authentication** - Dashboard requires login
-- **Subscriber Protection** - Subs immune to auto-bans
+- **Session Authentication** - Dashboard requires password login
+- **Subscriber Protection** - Subs immune to auto-bans (configurable)
 
 ---
 
-## 🚀 Service Management
+## 🛠️ Service Management
 
 ```bash
-# Start/Stop/Restart
+# Start/Stop/Restart the bot
 sudo systemctl start twitch-bot
 sudo systemctl stop twitch-bot
 sudo systemctl restart twitch-bot
 
-# View Logs
+# Start/Stop the dashboard
+sudo systemctl start twitch-dashboard
+sudo systemctl stop twitch-dashboard
+
+# View live logs
 sudo journalctl -u twitch-bot -f
 
-# Check Status
+# Check status
 sudo systemctl status twitch-bot
-
-# Dashboard
-sudo systemctl start twitch-dashboard
 sudo systemctl status twitch-dashboard
+
+# Enable auto-start on boot
+sudo systemctl enable twitch-bot twitch-dashboard
 ```
-
----
-
-## 📊 Comparison with Other Bots
-
-| Feature | EngelGuard | Nightbot | Fossabot | StreamElements |
-|---------|------------|----------|----------|----------------|
-| Custom Commands | ✅ | ✅ | ✅ | ✅ |
-| Variables (20+) | ✅ | ✅ | ✅ | ✅ |
-| Timers | ✅ | ✅ | ✅ | ✅ |
-| Spam Filters | ✅ | ✅ | ✅ | ✅ |
-| Lookalike Detection | ✅ | ❌ | ✅ | ❌ |
-| Strike System | ✅ | ⚠️ | ✅ | ⚠️ |
-| Nuke Command | ✅ | ❌ | ✅ | ✅ |
-| Loyalty Points | ✅ | ❌ | ❌ | ✅ |
-| Web Dashboard | ✅ | ✅ | ✅ | ✅ |
-| Self-Hosted | ✅ | ❌ | ❌ | ❌ |
-| Open Source | ✅ | ❌ | ❌ | ❌ |
-| Free | ✅ | ✅ | ✅ | ✅ |
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+EngelGuard is built by streamers, for streamers. We welcome contributions!
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+### How to Contribute
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/AmazingFeature`)
+3. **Commit** your changes (`git commit -m 'Add some AmazingFeature'`)
+4. **Push** to the branch (`git push origin feature/AmazingFeature`)
+5. **Open** a Pull Request
+
+### Ideas for Contributions
+- 🐛 Bug fixes
+- ✨ New features (cogs/modules)
+- 📝 Documentation improvements
+- 🌍 Translations
+- 🎨 Dashboard UI enhancements
+- 🧪 Tests and quality improvements
+
+**Not a coder?** You can still help by:
+- Reporting bugs
+- Suggesting features
+- Writing tutorials
+- Helping other users
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+EngelGuard is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+**What this means:**
+- ✅ Use it commercially
+- ✅ Modify it however you want
+- ✅ Distribute it freely
+- ✅ Use it privately
+- ⚠️ No warranty provided
+- ⚠️ Must include license and copyright notice
+
+---
+
+## 🗺️ Roadmap
+
+### ✅ Phase 1 - Core Bot (Complete)
+- Basic commands and moderation
+- Custom commands with variables
+- AutoMod with spam detection
+- Web dashboard
+
+### ✅ Phase 2 - Advanced Features (Complete)
+- Loyalty points system
+- Quotes system
+- Giveaways
+- Song requests (YouTube integration)
+
+### 🚧 Phase 3 - Community & Integrations (In Progress)
+- [ ] Discord notifications
+- [ ] Multi-channel support
+- [ ] Twitch EventSub integration
+- [ ] Prediction/Poll integration
+- [ ] Raid alerts
+- [ ] Hype train tracking
+
+### 🔮 Phase 4 - Advanced Customization (Planned)
+- [ ] Plugin system for community extensions
+- [ ] Custom dashboard themes
+- [ ] Advanced analytics
+- [ ] Backup/restore system
+- [ ] Migration tools (import from Nightbot/StreamElements)
+
+**Have an idea?** [Open an issue](https://github.com/engelswtf/engelguard/issues) and let's discuss it!
+
+---
+
+## 💬 Support & Community
+
+### Need Help?
+- **📖 Documentation** - Check the [docs](docs/) folder
+- **🐛 Bug Reports** - [Open an issue](https://github.com/engelswtf/engelguard/issues)
+- **💡 Feature Requests** - [Open an issue](https://github.com/engelswtf/engelguard/issues)
+- **❓ Questions** - [Discussions](https://github.com/engelswtf/engelguard/discussions)
+
+### Community
+- **GitHub Discussions** - Ask questions, share setups
+- **Discord** - Coming soon!
+- **Twitch** - Watch development streams (coming soon!)
 
 ---
 
 ## 🙏 Acknowledgments
 
-- [TwitchIO](https://github.com/TwitchIO/TwitchIO) - Twitch API wrapper
-- [Flask](https://flask.palletsprojects.com/) - Web dashboard framework
-- Inspired by Nightbot, Fossabot, StreamElements, and Moobot
+EngelGuard wouldn't exist without these amazing projects:
+
+- **[TwitchIO](https://github.com/TwitchIO/TwitchIO)** - Twitch API wrapper for Python
+- **[Flask](https://flask.palletsprojects.com/)** - Web dashboard framework
+- **[SQLite](https://www.sqlite.org/)** - Lightweight database engine
+
+**Inspired by:** Nightbot, Fossabot, StreamElements, and Moobot - but built to be free and open.
+
+---
+
+## ⭐ Star History
+
+If EngelGuard helps your stream, consider giving it a star! It helps others discover the project.
+
+[![Star History](https://img.shields.io/github/stars/engelswtf/engelguard?style=social)](https://github.com/engelswtf/engelguard)
 
 ---
 
 <div align="center">
 
-**Made with ❤️ by [engelswtf](https://github.com/engelswtf)**
+**Built with ❤️ by streamers, for streamers**
 
 [⬆ Back to Top](#️-engelguard)
+
+---
+
+**Your stream. Your bot. Your rules.**
+
+*No monthly fees. No premium tiers. No BS.*
 
 </div>
