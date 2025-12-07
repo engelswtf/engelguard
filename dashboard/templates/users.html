@@ -15,17 +15,31 @@
             </div>
             
             <div class="filter-group">
-                <label for="filter">Filter</label>
+                <label for="filter">User Type</label>
                 <select id="filter" name="filter">
                     <option value="">All Users</option>
                     <option value="whitelisted" {% if filter_type == 'whitelisted' %}selected{% endif %}>Whitelisted</option>
                     <option value="warned" {% if filter_type == 'warned' %}selected{% endif %}>Has Warnings</option>
                     <option value="low_trust" {% if filter_type == 'low_trust' %}selected{% endif %}>Low Trust (&lt;30)</option>
+                    <option value="high_trust" {% if filter_type == 'high_trust' %}selected{% endif %}>High Trust (&gt;70)</option>
+                    <option value="active" {% if filter_type == 'active' %}selected{% endif %}>Active (100+ msgs)</option>
+                    <option value="new" {% if filter_type == 'new' %}selected{% endif %}>New Users (&lt;10 msgs)</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="sort">Sort By</label>
+                <select id="sort" name="sort">
+                    <option value="recent" {% if sort_by == 'recent' %}selected{% endif %}>Most Recent</option>
+                    <option value="messages" {% if sort_by == 'messages' %}selected{% endif %}>Message Count</option>
+                    <option value="trust_high" {% if sort_by == 'trust_high' %}selected{% endif %}>Trust (High→Low)</option>
+                    <option value="trust_low" {% if sort_by == 'trust_low' %}selected{% endif %}>Trust (Low→High)</option>
+                    <option value="warnings" {% if sort_by == 'warnings' %}selected{% endif %}>Most Warnings</option>
                 </select>
             </div>
             
             <div class="filter-actions">
-                <button type="submit" class="btn btn-primary">🔍 Search</button>
+                <button type="submit" class="btn btn-primary">Search</button>
                 <a href="{{ url_for('users') }}" class="btn btn-secondary">Clear</a>
             </div>
         </form>
@@ -104,14 +118,14 @@
             {% if total_pages > 1 %}
             <div class="pagination">
                 {% if page > 1 %}
-                <a href="{{ url_for('users', page=page-1, search=search, filter=filter_type) }}" 
+                <a href="{{ url_for('users', page=page-1, search=search, filter=filter_type, sort=sort_by) }}" 
                    class="btn btn-secondary">← Previous</a>
                 {% endif %}
                 
                 <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
                 
                 {% if page < total_pages %}
-                <a href="{{ url_for('users', page=page+1, search=search, filter=filter_type) }}" 
+                <a href="{{ url_for('users', page=page+1, search=search, filter=filter_type, sort=sort_by) }}" 
                    class="btn btn-secondary">Next →</a>
                 {% endif %}
             </div>
@@ -138,7 +152,7 @@
 
 <script>
 function toggleWhitelist(userId, button) {
-    fetch('/api/user/' + userId + '/whitelist', { method: 'POST' })
+    fetch('/'+'api/user/' + userId + '/whitelist', { method: 'POST' })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -155,7 +169,7 @@ function showHistory(userId, username) {
     document.getElementById('historyTitle').textContent = 'History: ' + username;
     document.getElementById('historyContent').innerHTML = 'Loading...';
     
-    fetch('/api/user/' + userId + '/history')
+    fetch('/'+'api/user/' + userId + '/history')
         .then(response => response.json())
         .then(data => {
             if (data.success && data.actions.length > 0) {

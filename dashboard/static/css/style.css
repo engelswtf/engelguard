@@ -1415,3 +1415,280 @@ a:hover {
     color: var(--text-secondary);
     font-size: 0.9rem;
 }
+
+/* ==========================================
+   Modal & Button Spacing Fixes
+   ========================================== */
+
+/* Modal Content - More comfortable padding */
+.modal-content {
+    padding: 0;
+}
+
+.modal-header {
+    padding: 1.25rem 1.75rem;
+}
+
+.modal-body {
+    padding: 1.75rem;
+}
+
+.modal-footer {
+    padding: 1.25rem 1.75rem;
+}
+
+/* Form spacing inside modals */
+.modal-body .form-group {
+    margin-bottom: 1.25rem;
+}
+
+.modal-body .form-group:last-child {
+    margin-bottom: 0;
+}
+
+.modal-body .form-row {
+    margin-bottom: 1.25rem;
+}
+
+.modal-body .form-actions {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+}
+
+/* Button spacing - adjacent buttons */
+.btn + .btn {
+    margin-left: 0.5rem;
+}
+
+/* Action buttons container in tables */
+.action-buttons {
+    display: inline-flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Actions cell spacing */
+.actions-cell .btn + .btn {
+    margin-left: 0.5rem;
+}
+
+/* Form actions button spacing */
+.form-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.form-actions .btn + .btn {
+    margin-left: 0;
+}
+
+/* Modal footer button spacing */
+.modal-footer {
+    gap: 0.75rem;
+}
+
+.modal-footer .btn + .btn {
+    margin-left: 0;
+}
+
+/* Header actions button spacing */
+.header-actions .btn + .btn {
+    margin-left: 0.5rem;
+}
+
+/* Card actions button spacing */
+.card-actions .btn + .btn {
+    margin-left: 0.5rem;
+}
+
+/* Filter actions button spacing */
+.filter-actions {
+    gap: 0.5rem;
+}
+
+/* Top bar actions spacing */
+.top-bar-actions .btn + .btn {
+    margin-left: 0.5rem;
+}
+
+/* ==========================================
+   Section Spacing Fixes
+   ========================================== */
+
+/* Card spacing - consistent margin between cards */
+.card {
+    margin-bottom: 1.5rem;
+}
+
+.card:last-child {
+    margin-bottom: 0;
+}
+
+/* Stats grid/row spacing */
+.stats-grid {
+    margin-bottom: 1.5rem;
+}
+
+.stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stats-row .stat-card {
+    background: var(--bg-secondary);
+    padding: 1.5rem;
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid var(--border);
+}
+
+/* Page header spacing */
+.page-header {
+    margin-bottom: 1.5rem;
+}
+
+/* Section dividers - when sections follow each other */
+.section + .section,
+.card + .card {
+    margin-top: 0; /* Reset since we use margin-bottom */
+}
+
+/* Dashboard grid spacing */
+.dashboard-grid {
+    margin-bottom: 1.5rem;
+}
+
+/* Settings grid spacing */
+.settings-grid {
+    margin-bottom: 1.5rem;
+}
+
+/* Table container spacing */
+.table-responsive {
+    margin-bottom: 0;
+}
+
+.card-body .data-table {
+    margin-bottom: 0;
+}
+
+/* Filters card spacing */
+.filters-card {
+    margin-bottom: 1.5rem;
+}
+
+/* Content sections spacing */
+.content > .card:first-child {
+    margin-top: 0;
+}
+
+/* Form section spacing */
+.form-section {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.form-section:last-child {
+    margin-bottom: 0;
+}
+
+/* Escalation display spacing (strikes page) */
+.escalation-display {
+    margin-bottom: 1rem;
+}
+
+/* Now playing card spacing (songrequests) */
+.card-highlight {
+    margin-bottom: 1.5rem;
+}
+
+/* Empty state spacing */
+.empty-state {
+    padding: 2.5rem 1.5rem;
+}
+
+/* Header info spacing */
+.header-info {
+    margin-bottom: 0;
+}
+
+.header-subtitle {
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+/* Variables grid spacing (commands page) */
+.variables-grid {
+    margin-top: 0;
+}
+
+/* Action buttons in tables - ensure proper gap */
+.actions-cell {
+    white-space: nowrap;
+}
+
+.actions-cell .action-buttons {
+    display: inline-flex;
+    gap: 0.5rem;
+}
+
+/* Quote text styling with proper spacing */
+.quote-text {
+    padding: 0.25rem 0;
+}
+
+/* Badge spacing in tables */
+td .badge {
+    margin: 0;
+}
+
+/* Search box spacing in card headers */
+.card-header .search-box,
+.card-header .card-actions {
+    margin-left: auto;
+}
+
+.search-box input,
+.search-input {
+    margin: 0;
+}
+
+/* ==========================================
+   Filter/Search Bar Button Consistency
+   ========================================== */
+
+/* Ensure all filter-actions buttons have consistent sizing */
+.filter-actions .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    height: auto;
+    line-height: 1.5;
+    min-width: 80px;
+}
+
+/* Make Clear button match Search/Filter button styling */
+.filter-actions .btn-secondary {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    height: auto;
+    line-height: 1.5;
+}
+
+/* Ensure buttons in filters-form align properly */
+.filters-form .filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: nowrap;
+}
+
+/* Search box buttons consistency */
+.search-box .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    height: auto;
+    line-height: 1.5;
+}

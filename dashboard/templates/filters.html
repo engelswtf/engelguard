@@ -14,7 +14,7 @@
     <div class="card filter-card">
         <div class="card-header">
             <h3>Caps Filter</h3>
-            <label class="toggle-switch">
+            <label class="toggle">
                 <input type="checkbox" name="caps_enabled" {% if settings.caps_enabled %}checked{% endif %}>
                 <span class="toggle-slider"></span>
             </label>
@@ -38,7 +38,7 @@
     <div class="card filter-card">
         <div class="card-header">
             <h3>Emote Filter</h3>
-            <label class="toggle-switch">
+            <label class="toggle">
                 <input type="checkbox" name="emote_enabled" {% if settings.emote_enabled %}checked{% endif %}>
                 <span class="toggle-slider"></span>
             </label>
@@ -57,7 +57,7 @@
     <div class="card filter-card">
         <div class="card-header">
             <h3>Symbol Filter</h3>
-            <label class="toggle-switch">
+            <label class="toggle">
                 <input type="checkbox" name="symbol_enabled" {% if settings.symbol_enabled %}checked{% endif %}>
                 <span class="toggle-slider"></span>
             </label>
@@ -76,7 +76,7 @@
     <div class="card filter-card">
         <div class="card-header">
             <h3>Link Filter</h3>
-            <label class="toggle-switch">
+            <label class="toggle">
                 <input type="checkbox" name="link_enabled" {% if settings.link_enabled %}checked{% endif %}>
                 <span class="toggle-slider"></span>
             </label>
@@ -91,7 +91,7 @@
     <div class="card filter-card">
         <div class="card-header">
             <h3>Length Filter</h3>
-            <label class="toggle-switch">
+            <label class="toggle">
                 <input type="checkbox" name="length_enabled" {% if settings.length_enabled %}checked{% endif %}>
                 <span class="toggle-slider"></span>
             </label>
@@ -110,7 +110,7 @@
     <div class="card filter-card">
         <div class="card-header">
             <h3>Repetition Filter</h3>
-            <label class="toggle-switch">
+            <label class="toggle">
                 <input type="checkbox" name="repetition_enabled" {% if settings.repetition_enabled %}checked{% endif %}>
                 <span class="toggle-slider"></span>
             </label>
@@ -129,7 +129,7 @@
     <div class="card filter-card">
         <div class="card-header">
             <h3>Zalgo Filter</h3>
-            <label class="toggle-switch">
+            <label class="toggle">
                 <input type="checkbox" name="zalgo_enabled" {% if settings.zalgo_enabled %}checked{% endif %}>
                 <span class="toggle-slider"></span>
             </label>
@@ -144,7 +144,7 @@
     <div class="card filter-card">
         <div class="card-header">
             <h3>Lookalike Filter</h3>
-            <label class="toggle-switch">
+            <label class="toggle">
                 <input type="checkbox" name="lookalike_enabled" {% if settings.lookalike_enabled %}checked{% endif %}>
                 <span class="toggle-slider"></span>
             </label>
@@ -191,45 +191,6 @@
     color: var(--text-secondary);
     font-size: 0.9rem;
     margin-bottom: 1rem;
-}
-.toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 50px;
-    height: 24px;
-}
-.toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-.toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--bg-secondary);
-    transition: 0.3s;
-    border-radius: 24px;
-}
-.toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: 0.3s;
-    border-radius: 50%;
-}
-input:checked + .toggle-slider {
-    background-color: var(--success);
-}
-input:checked + .toggle-slider:before {
-    transform: translateX(26px);
 }
 .form-actions {
     text-align: center;

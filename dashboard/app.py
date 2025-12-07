@@ -804,6 +804,7 @@ def users():
     """Users management page."""
     search = request.args.get("search", "")
     filter_type = request.args.get("filter", "")
+    sort_by = request.args.get("sort", "recent")
     page = int(request.args.get("page", 1))
     per_page = 25
     
@@ -832,11 +833,32 @@ def users():
         elif filter_type == "low_trust":
             query += " AND trust_score < 30"
             count_query += " AND trust_score < 30"
+        elif filter_type == "high_trust":
+            query += " AND trust_score > 70"
+            count_query += " AND trust_score > 70"
+        elif filter_type == "active":
+            query += " AND message_count >= 100"
+            count_query += " AND message_count >= 100"
+        elif filter_type == "new":
+            query += " AND message_count < 10"
+            count_query += " AND message_count < 10"
         
         cursor.execute(count_query, params)
         total_count = cursor.fetchone()["count"]
         
-        query += " ORDER BY last_message DESC NULLS LAST LIMIT ? OFFSET ?"
+        # Apply sorting
+        if sort_by == "messages":
+            query += " ORDER BY message_count DESC"
+        elif sort_by == "trust_high":
+            query += " ORDER BY trust_score DESC"
+        elif sort_by == "trust_low":
+            query += " ORDER BY trust_score ASC"
+        elif sort_by == "warnings":
+            query += " ORDER BY warnings_count DESC"
+        else:  # recent (default)
+            query += " ORDER BY last_message DESC NULLS LAST"
+        
+        query += " LIMIT ? OFFSET ?"
         params.extend([per_page, (page - 1) * per_page])
         
         cursor.execute(query, params)
@@ -854,8 +876,11 @@ def users():
         total_pages=total_pages,
         total_count=total_count,
         search=search,
-        filter_type=filter_type
+        filter_type=filter_type,
+        sort_by=sort_by
     )
+
+
 
 
 # ==================== API Routes ====================

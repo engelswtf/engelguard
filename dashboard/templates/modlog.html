@@ -8,6 +8,12 @@
     <!-- Filters -->
     <div class="card filters-card">
         <form method="GET" class="filters-form">
+            <div class="filter-group filter-group-wide">
+                <label for="username">Search Username</label>
+                <input type="text" id="username" name="username" 
+                       value="{{ filters.username }}" placeholder="Search username...">
+            </div>
+            
             <div class="filter-group">
                 <label for="action">Action Type</label>
                 <select id="action" name="action">
@@ -16,13 +22,9 @@
                     <option value="delete" {% if filters.action == 'delete' %}selected{% endif %}>Delete</option>
                     <option value="timeout" {% if filters.action == 'timeout' %}selected{% endif %}>Timeout</option>
                     <option value="ban" {% if filters.action == 'ban' %}selected{% endif %}>Ban</option>
+                    <option value="unban" {% if filters.action == 'unban' %}selected{% endif %}>Unban</option>
+                    <option value="warn" {% if filters.action == 'warn' %}selected{% endif %}>Warning</option>
                 </select>
-            </div>
-            
-            <div class="filter-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" 
-                       value="{{ filters.username }}" placeholder="Search username...">
             </div>
             
             <div class="filter-group">
@@ -36,7 +38,7 @@
             </div>
             
             <div class="filter-actions">
-                <button type="submit" class="btn btn-primary">🔍 Filter</button>
+                <button type="submit" class="btn btn-primary">Filter</button>
                 <a href="{{ url_for('modlog') }}" class="btn btn-secondary">Clear</a>
             </div>
         </form>
