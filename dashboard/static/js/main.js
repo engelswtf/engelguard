@@ -159,8 +159,8 @@ function initBotStatus() {
         }
     }, 1000);
     
-    // Re-sync with server every 60 seconds to stay accurate
-    setInterval(fetchBotStatus, 60000);
+    // Re-sync with server every 10 seconds to stay accurate
+    setInterval(fetchBotStatus, 10000);
 }
 
 /**
