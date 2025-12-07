@@ -107,13 +107,13 @@ def get_bot_status() -> dict[str, Any]:
     """Get current bot status."""
     try:
         result = subprocess.run(
-            ["sudo", "systemctl", "is-active", "twitch-bot"],
+            ["systemctl", "is-active", "twitch-bot"],
             capture_output=True,
             text=True,
             timeout=5
         )
         is_running = result.stdout.strip() == "active"
-    except Exception:
+    except Exception as e:
         is_running = False
     
     uptime = "Unknown"
@@ -127,7 +127,7 @@ def get_bot_status() -> dict[str, Any]:
             )
             timestamp_str = result.stdout.strip().split("=")[1]
             if timestamp_str:
-                start_time = datetime.strptime(timestamp_str.split(".")[0], "%a %Y-%m-%d %H:%M:%S")
+                start_time = datetime.strptime(timestamp_str.replace(" UTC", "").split(".")[0], "%a %Y-%m-%d %H:%M:%S")
                 delta = datetime.now() - start_time
                 hours, remainder = divmod(int(delta.total_seconds()), 3600)
                 minutes, seconds = divmod(remainder, 60)
