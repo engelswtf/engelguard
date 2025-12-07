@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}Filters - EngelGuard Dashboard{% endblock %}
+{% block page_title %}Chat Filters{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <p class="page-description">Configure spam detection filters for your channel.</p>
+</div>
+
+<form method="POST" action="{{ url_for('filters_page') }}">
+<div class="filters-grid">
+    <!-- Caps Filter -->
+    <div class="card filter-card">
+        <div class="card-header">
+            <h3>Caps Filter</h3>
+            <label class="toggle-switch">
+                <input type="checkbox" name="caps_enabled" {% if settings.caps_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Detect messages with excessive capital letters.</p>
+            <div class="form-group">
+                <label>Minimum Message Length</label>
+                <input type="number" name="caps_min_length" value="{{ settings.caps_min_length }}" min="5" max="100">
+                <small>Only check messages longer than this</small>
+            </div>
+            <div class="form-group">
+                <label>Maximum Caps Percentage</label>
+                <input type="number" name="caps_max_percent" value="{{ settings.caps_max_percent }}" min="10" max="100">
+                <small>Trigger when caps exceed this %</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Emote Filter -->
+    <div class="card filter-card">
+        <div class="card-header">
+            <h3>Emote Filter</h3>
+            <label class="toggle-switch">
+                <input type="checkbox" name="emote_enabled" {% if settings.emote_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Detect emote spam in messages.</p>
+            <div class="form-group">
+                <label>Maximum Emotes</label>
+                <input type="number" name="emote_max_count" value="{{ settings.emote_max_count }}" min="1" max="50">
+                <small>Maximum emotes allowed per message</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Symbol Filter -->
+    <div class="card filter-card">
+        <div class="card-header">
+            <h3>Symbol Filter</h3>
+            <label class="toggle-switch">
+                <input type="checkbox" name="symbol_enabled" {% if settings.symbol_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Detect excessive symbols and ASCII art.</p>
+            <div class="form-group">
+                <label>Maximum Symbol Percentage</label>
+                <input type="number" name="symbol_max_percent" value="{{ settings.symbol_max_percent }}" min="10" max="100">
+                <small>Trigger when symbols exceed this %</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Link Filter -->
+    <div class="card filter-card">
+        <div class="card-header">
+            <h3>Link Filter</h3>
+            <label class="toggle-switch">
+                <input type="checkbox" name="link_enabled" {% if settings.link_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Filter URLs and links in messages.</p>
+            <small>Uses whitelist/blacklist system. Trusted domains like twitch.tv, youtube.com are allowed.</small>
+        </div>
+    </div>
+    
+    <!-- Length Filter -->
+    <div class="card filter-card">
+        <div class="card-header">
+            <h3>Length Filter</h3>
+            <label class="toggle-switch">
+                <input type="checkbox" name="length_enabled" {% if settings.length_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Limit maximum message length.</p>
+            <div class="form-group">
+                <label>Maximum Characters</label>
+                <input type="number" name="length_max_chars" value="{{ settings.length_max_chars }}" min="100" max="1000">
+                <small>Maximum characters per message</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Repetition Filter -->
+    <div class="card filter-card">
+        <div class="card-header">
+            <h3>Repetition Filter</h3>
+            <label class="toggle-switch">
+                <input type="checkbox" name="repetition_enabled" {% if settings.repetition_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Detect repeated words and characters.</p>
+            <div class="form-group">
+                <label>Max Repeated Words</label>
+                <input type="number" name="repetition_max_words" value="{{ settings.repetition_max_words }}" min="3" max="50">
+                <small>Maximum times a word can repeat</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Zalgo Filter -->
+    <div class="card filter-card">
+        <div class="card-header">
+            <h3>Zalgo Filter</h3>
+            <label class="toggle-switch">
+                <input type="checkbox" name="zalgo_enabled" {% if settings.zalgo_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Detect Zalgo text (glitchy combining characters).</p>
+            <small>Zalgo text uses Unicode combining characters to create "corrupted" looking text.</small>
+        </div>
+    </div>
+    
+    <!-- Lookalike Filter -->
+    <div class="card filter-card">
+        <div class="card-header">
+            <h3>Lookalike Filter</h3>
+            <label class="toggle-switch">
+                <input type="checkbox" name="lookalike_enabled" {% if settings.lookalike_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Detect character substitution attempts.</p>
+            <small>Catches attempts like "fr33 f0ll0w3rs" by normalizing lookalike characters.</small>
+        </div>
+    </div>
+</div>
+
+<div class="form-actions">
+    <button type="submit" class="btn btn-primary btn-lg">Save Filter Settings</button>
+</div>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Test Message</h3>
+    </div>
+    <div class="card-body">
+        <div class="form-group">
+            <label>Enter a message to test against filters:</label>
+            <textarea id="testMessage" rows="2" placeholder="Enter a test message..."></textarea>
+        </div>
+        <button type="button" class="btn btn-secondary" onclick="testMessage()">Test Message</button>
+        <div id="testResult" class="test-result" style="display:none;"></div>
+    </div>
+</div>
+
+<style>
+.filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.filter-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.filter-description {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-secondary);
+    transition: 0.3s;
+    border-radius: 24px;
+}
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+input:checked + .toggle-slider {
+    background-color: var(--success);
+}
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+.form-actions {
+    text-align: center;
+    margin: 2rem 0;
+}
+.test-result {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 8px;
+    background: var(--bg-secondary);
+}
+.test-result.pass {
+    border-left: 4px solid var(--success);
+}
+.test-result.fail {
+    border-left: 4px solid var(--danger);
+}
+</style>
+
+<script>
+function testMessage() {
+    const message = document.getElementById('testMessage').value;
+    if (!message) return;
+    
+    fetch('/api/test-filter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+    })
+    .then(r => r.json())
+    .then(data => {
+        const result = document.getElementById('testResult');
+        result.style.display = 'block';
+        if (data.action === 'allow') {
+            result.className = 'test-result pass';
+            result.innerHTML = `<strong>PASS</strong> - Message would be allowed (Score: ${data.score})`;
+        } else {
+            result.className = 'test-result fail';
+            result.innerHTML = `<strong>${data.action.toUpperCase()}</strong> - Score: ${data.score}<br>Reasons: ${data.reasons.join(', ')}`;
+        }
+    });
+}
+</script>
+{% endblock %}

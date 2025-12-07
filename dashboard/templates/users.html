@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Users - EngelGuard{% endblock %}
+{% block page_title %}Users{% endblock %}
+
+{% block content %}
+<div class="users-container">
+    <!-- Search & Filters -->
+    <div class="card filters-card">
+        <form method="GET" class="filters-form">
+            <div class="filter-group filter-group-wide">
+                <label for="search">Search Username</label>
+                <input type="text" id="search" name="search" 
+                       value="{{ search }}" placeholder="Search users...">
+            </div>
+            
+            <div class="filter-group">
+                <label for="filter">Filter</label>
+                <select id="filter" name="filter">
+                    <option value="">All Users</option>
+                    <option value="whitelisted" {% if filter_type == 'whitelisted' %}selected{% endif %}>Whitelisted</option>
+                    <option value="warned" {% if filter_type == 'warned' %}selected{% endif %}>Has Warnings</option>
+                    <option value="low_trust" {% if filter_type == 'low_trust' %}selected{% endif %}>Low Trust (&lt;30)</option>
+                </select>
+            </div>
+            
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-primary">🔍 Search</button>
+                <a href="{{ url_for('users') }}" class="btn btn-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Users List -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Users ({{ total_count }} total)</h2>
+        </div>
+        <div class="card-body">
+            {% if users %}
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Trust Score</th>
+                            <th>Messages</th>
+                            <th>Warnings</th>
+                            <th>First Seen</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td class="col-user">
+                                <strong>{{ user.username }}</strong>
+                            </td>
+                            <td class="col-trust">
+                                <div class="trust-bar">
+                                    <div class="trust-fill 
+                                        {% if user.trust_score >= 70 %}trust-high
+                                        {% elif user.trust_score >= 40 %}trust-medium
+                                        {% else %}trust-low{% endif %}" 
+                                         style="width: {{ user.trust_score }}%"></div>
+                                </div>
+                                <span class="trust-value">{{ user.trust_score }}/100</span>
+                            </td>
+                            <td class="col-messages">{{ user.message_count }}</td>
+                            <td class="col-warnings">
+                                {% if user.warnings_count > 0 %}
+                                <span class="warning-badge">{{ user.warnings_count }}</span>
+                                {% else %}
+                                0
+                                {% endif %}
+                            </td>
+                            <td class="col-date">{{ user.first_seen[:10] if user.first_seen else 'Unknown' }}</td>
+                            <td class="col-status">
+                                {% if user.is_whitelisted %}
+                                <span class="status-badge status-whitelisted">Whitelisted</span>
+                                {% else %}
+                                <span class="status-badge status-normal">Normal</span>
+                                {% endif %}
+                            </td>
+                            <td class="col-actions">
+                                <button class="btn btn-small btn-secondary" 
+                                        onclick="toggleWhitelist('{{ user.user_id }}', this)"
+                                        data-whitelisted="{{ 'true' if user.is_whitelisted else 'false' }}">
+                                    {% if user.is_whitelisted %}Remove WL{% else %}Whitelist{% endif %}
+                                </button>
+                                <button class="btn btn-small btn-secondary" 
+                                        onclick="showHistory('{{ user.user_id }}', '{{ user.username }}')">
+                                    History
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                {% if page > 1 %}
+                <a href="{{ url_for('users', page=page-1, search=search, filter=filter_type) }}" 
+                   class="btn btn-secondary">← Previous</a>
+                {% endif %}
+                
+                <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+                
+                {% if page < total_pages %}
+                <a href="{{ url_for('users', page=page+1, search=search, filter=filter_type) }}" 
+                   class="btn btn-secondary">Next →</a>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% else %}
+            <p class="no-data">No users found matching your search criteria.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- History Modal -->
+<div id="historyModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="historyTitle">User History</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="historyContent">
+            Loading...
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleWhitelist(userId, button) {
+    fetch('/api/user/' + userId + '/whitelist', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+}
+
+function showHistory(userId, username) {
+    document.getElementById('historyModal').style.display = 'flex';
+    document.getElementById('historyTitle').textContent = 'History: ' + username;
+    document.getElementById('historyContent').innerHTML = 'Loading...';
+    
+    fetch('/api/user/' + userId + '/history')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.actions.length > 0) {
+                let html = '<table class="data-table"><thead><tr><th>Time</th><th>Action</th><th>Reason</th></tr></thead><tbody>';
+                data.actions.forEach(action => {
+                    html += '<tr><td>' + action.timestamp.substring(0, 16) + '</td>';
+                    html += '<td><span class="action-badge action-' + action.action + '">' + action.action + '</span></td>';
+                    html += '<td>' + (action.reason || '-') + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                document.getElementById('historyContent').innerHTML = html;
+            } else {
+                document.getElementById('historyContent').innerHTML = '<p class="no-data">No moderation history for this user.</p>';
+            }
+        })
+        .catch(err => {
+            document.getElementById('historyContent').innerHTML = '<p class="error">Error loading history.</p>';
+        });
+}
+
+function closeModal() {
+    document.getElementById('historyModal').style.display = 'none';
+}
+
+// Close modal on outside click
+document.getElementById('historyModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+</script>
+{% endblock %}

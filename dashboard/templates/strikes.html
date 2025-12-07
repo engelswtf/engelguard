@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}Strikes - EngelGuard Dashboard{% endblock %}
+{% block page_title %}Strike System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <p class="page-description">View and manage user strikes. Strikes escalate from warnings to timeouts to bans.</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ users_with_strikes|length }}</div>
+        <div class="stat-label">Users with Strikes</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ total_strikes }}</div>
+        <div class="stat-label">Total Active Strikes</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ expire_days }}</div>
+        <div class="stat-label">Days Until Expire</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ max_strikes }}</div>
+        <div class="stat-label">Max Before Ban</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Strike Escalation</h3>
+    </div>
+    <div class="card-body">
+        <div class="escalation-display">
+            <div class="escalation-step">
+                <span class="step-number">1</span>
+                <span class="step-action">Warning</span>
+            </div>
+            <div class="escalation-arrow">→</div>
+            <div class="escalation-step">
+                <span class="step-number">2</span>
+                <span class="step-action">1 min timeout</span>
+            </div>
+            <div class="escalation-arrow">→</div>
+            <div class="escalation-step">
+                <span class="step-number">3</span>
+                <span class="step-action">10 min timeout</span>
+            </div>
+            <div class="escalation-arrow">→</div>
+            <div class="escalation-step">
+                <span class="step-number">4</span>
+                <span class="step-action">1 hour timeout</span>
+            </div>
+            <div class="escalation-arrow">→</div>
+            <div class="escalation-step step-danger">
+                <span class="step-number">5</span>
+                <span class="step-action">Ban</span>
+            </div>
+        </div>
+        <p class="escalation-note">Subscribers are protected from auto-ban (max timeout at strike 5)</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Users with Active Strikes</h3>
+        <div class="search-box">
+            <input type="text" id="searchStrikes" placeholder="Search users..." onkeyup="filterStrikes()">
+        </div>
+    </div>
+    <div class="card-body">
+        <table class="data-table" id="strikesTable">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Strikes</th>
+                    <th>Last Strike</th>
+                    <th>Last Reason</th>
+                    <th>Expires</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users_with_strikes %}
+                <tr data-username="{{ user.username }}">
+                    <td><strong>{{ user.username }}</strong></td>
+                    <td>
+                        <div class="strike-indicator">
+                            {% for i in range(5) %}
+                            <span class="strike-dot {% if i < user.strike_count %}active{% endif %}"></span>
+                            {% endfor %}
+                            <span class="strike-count">{{ user.strike_count }}/5</span>
+                        </div>
+                    </td>
+                    <td>{{ user.last_strike[:16] if user.last_strike else 'N/A' }}</td>
+                    <td class="reason-cell" title="{{ user.last_reason }}">{{ (user.last_reason or 'N/A')[:30] }}{% if user.last_reason and user.last_reason|length > 30 %}...{% endif %}</td>
+                    <td>{{ user.expires_at[:10] if user.expires_at else 'N/A' }}</td>
+                    <td class="actions-cell">
+                        <button class="btn btn-sm btn-secondary" onclick="viewHistory('{{ user.user_id }}', '{{ user.username }}')">History</button>
+                        <button class="btn btn-sm btn-warning" onclick="clearStrikes('{{ user.user_id }}', '{{ user.username }}')">Clear</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="empty-state">No users with active strikes.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Recent Strike History</h3>
+    </div>
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>User</th>
+                    <th>Strike #</th>
+                    <th>Action</th>
+                    <th>Reason</th>
+                    <th>Moderator</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in strike_history %}
+                <tr>
+                    <td>{{ entry.timestamp[:16] }}</td>
+                    <td>{{ entry.username }}</td>
+                    <td>{{ entry.strike_number }}</td>
+                    <td><span class="badge badge-{{ entry.action_taken.split(':')[0] }}">{{ entry.action_taken }}</span></td>
+                    <td class="reason-cell" title="{{ entry.reason }}">{{ (entry.reason or '')[:40] }}...</td>
+                    <td>{{ entry.moderator }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="empty-state">No strike history yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- History Modal -->
+<div class="modal" id="historyModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Strike History: <span id="historyUsername"></span></h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="historyContent">
+            Loading...
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.escalation-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 1rem;
+}
+.escalation-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    min-width: 100px;
+}
+.step-number {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--warning);
+}
+.step-action {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.step-danger .step-number {
+    color: var(--danger);
+}
+.escalation-arrow {
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+}
+.escalation-note {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-top: 1rem;
+}
+.strike-indicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.strike-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border);
+}
+.strike-dot.active {
+    background: var(--warning);
+    border-color: var(--warning);
+}
+.strike-count {
+    margin-left: 8px;
+    font-weight: bold;
+}
+.reason-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.badge-warn { background: var(--warning); }
+.badge-timeout { background: var(--info); }
+.badge-ban { background: var(--danger); }
+</style>
+
+<script>
+function viewHistory(userId, username) {
+    document.getElementById('historyUsername').textContent = username;
+    document.getElementById('historyContent').innerHTML = 'Loading...';
+    document.getElementById('historyModal').classList.add('show');
+    
+    fetch(`/api/strikes/${userId}/history`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.history.length > 0) {
+                let html = '<table class="data-table"><thead><tr><th>Time</th><th>Strike</th><th>Action</th><th>Reason</th></tr></thead><tbody>';
+                data.history.forEach(h => {
+                    html += `<tr><td>${h.timestamp.substring(0,16)}</td><td>${h.strike_number}</td><td>${h.action_taken}</td><td>${h.reason || 'N/A'}</td></tr>`;
+                });
+                html += '</tbody></table>';
+                document.getElementById('historyContent').innerHTML = html;
+            } else {
+                document.getElementById('historyContent').innerHTML = '<p>No history found.</p>';
+            }
+        });
+}
+
+function clearStrikes(userId, username) {
+    if (confirm(`Clear all strikes for ${username}?`)) {
+        fetch(`/api/strikes/${userId}/clear`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) location.reload();
+                else alert('Failed to clear strikes');
+            });
+    }
+}
+
+function filterStrikes() {
+    const search = document.getElementById('searchStrikes').value.toLowerCase();
+    const rows = document.querySelectorAll('#strikesTable tbody tr');
+    rows.forEach(row => {
+        const username = row.dataset.username || '';
+        row.style.display = username.includes(search) ? '' : 'none';
+    });
+}
+
+function closeModal() {
+    document.getElementById('historyModal').classList.remove('show');
+}
+</script>
+{% endblock %}

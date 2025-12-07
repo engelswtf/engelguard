@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Timers - EngelGuard Dashboard{% endblock %}
+{% block page_title %}Timers{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <p class="page-description">Schedule automatic messages to post at intervals.</p>
+    <button class="btn btn-primary" onclick="showAddModal()">+ Add Timer</button>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Timers ({{ timers|length }})</h3>
+    </div>
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Message</th>
+                    <th>Interval</th>
+                    <th>Chat Lines</th>
+                    <th>Online Only</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for timer in timers %}
+                <tr data-name="{{ timer.name }}">
+                    <td><strong>{{ timer.name }}</strong></td>
+                    <td class="message-cell" title="{{ timer.message }}">{{ timer.message[:50] }}{% if timer.message|length > 50 %}...{% endif %}</td>
+                    <td>{{ timer.interval_minutes }} min</td>
+                    <td>{{ timer.chat_lines_required }}</td>
+                    <td>{{ 'Yes' if timer.online_only else 'No' }}</td>
+                    <td>
+                        <label class="toggle-switch">
+                            <input type="checkbox" {% if timer.enabled %}checked{% endif %} onchange="toggleTimer('{{ timer.name }}', this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </td>
+                    <td class="actions-cell">
+                        <button class="btn btn-sm btn-secondary" onclick="editTimer('{{ timer.name }}')">Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteTimer('{{ timer.name }}')">Delete</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="empty-state">No timers configured. Click "Add Timer" to create one.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal" id="timerModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle">Add Timer</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <form id="timerForm" method="POST">
+            <input type="hidden" name="action" id="formAction" value="add">
+            <input type="hidden" name="original_name" id="originalName">
+            
+            <div class="form-group">
+                <label for="timerName">Timer Name</label>
+                <input type="text" id="timerName" name="name" required pattern="[a-zA-Z0-9_]+" placeholder="social">
+            </div>
+            
+            <div class="form-group">
+                <label for="timerMessage">Message</label>
+                <textarea id="timerMessage" name="message" rows="3" required placeholder="Follow me on Twitter @example!"></textarea>
+                <small>Supports all command variables like $(user), $(channel), etc.</small>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="timerInterval">Interval (minutes)</label>
+                    <input type="number" id="timerInterval" name="interval_minutes" value="15" min="5" max="120" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="timerChatLines">Min Chat Lines</label>
+                    <input type="number" id="timerChatLines" name="chat_lines_required" value="5" min="0" max="100">
+                    <small>Messages required between posts</small>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="timerOnlineOnly" name="online_only" checked>
+                    <span>Only when stream is online</span>
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="timerEnabled" name="enabled" checked>
+                    <span>Enabled</span>
+                </label>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Timer</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.message-cell {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-secondary);
+    transition: 0.3s;
+    border-radius: 24px;
+}
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+input:checked + .toggle-slider {
+    background-color: var(--success);
+}
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+</style>
+
+<script>
+function showAddModal() {
+    document.getElementById('modalTitle').textContent = 'Add Timer';
+    document.getElementById('formAction').value = 'add';
+    document.getElementById('timerForm').reset();
+    document.getElementById('timerOnlineOnly').checked = true;
+    document.getElementById('timerEnabled').checked = true;
+    document.getElementById('timerModal').classList.add('show');
+}
+
+function editTimer(name) {
+    document.getElementById('modalTitle').textContent = 'Edit Timer';
+    document.getElementById('formAction').value = 'edit';
+    document.getElementById('originalName').value = name;
+    
+    fetch(`/api/timer/${name}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('timerName').value = data.timer.name;
+                document.getElementById('timerMessage').value = data.timer.message;
+                document.getElementById('timerInterval').value = data.timer.interval_minutes;
+                document.getElementById('timerChatLines').value = data.timer.chat_lines_required;
+                document.getElementById('timerOnlineOnly').checked = data.timer.online_only;
+                document.getElementById('timerEnabled').checked = data.timer.enabled;
+            }
+        });
+    document.getElementById('timerModal').classList.add('show');
+}
+
+function deleteTimer(name) {
+    if (confirm(`Delete timer "${name}"?`)) {
+        fetch(`/api/timer/${name}/delete`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) location.reload();
+                else alert('Failed to delete timer');
+            });
+    }
+}
+
+function toggleTimer(name, enabled) {
+    fetch(`/api/timer/${name}/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+    });
+}
+
+function closeModal() {
+    document.getElementById('timerModal').classList.remove('show');
+}
+</script>
+{% endblock %}

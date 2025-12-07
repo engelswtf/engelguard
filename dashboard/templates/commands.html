@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Commands - EngelGuard Dashboard{% endblock %}
+{% block page_title %}Custom Commands{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <p class="page-description">Create and manage custom chat commands with dynamic variables.</p>
+    <button class="btn btn-primary" onclick="showAddModal()">+ Add Command</button>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Commands ({{ commands|length }})</h3>
+        <div class="search-box">
+            <input type="text" id="searchCommands" placeholder="Search commands..." onkeyup="filterCommands()">
+        </div>
+    </div>
+    <div class="card-body">
+        <table class="data-table" id="commandsTable">
+            <thead>
+                <tr>
+                    <th>Command</th>
+                    <th>Response</th>
+                    <th>Uses</th>
+                    <th>Permission</th>
+                    <th>Cooldown</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cmd in commands %}
+                <tr data-name="{{ cmd.name }}">
+                    <td><code>!{{ cmd.name }}</code></td>
+                    <td class="response-cell" title="{{ cmd.response }}">{{ cmd.response[:50] }}{% if cmd.response|length > 50 %}...{% endif %}</td>
+                    <td>{{ cmd.use_count or 0 }}</td>
+                    <td><span class="badge badge-{{ cmd.permission_level }}">{{ cmd.permission_level }}</span></td>
+                    <td>{{ cmd.cooldown_user }}s / {{ cmd.cooldown_global }}s</td>
+                    <td>
+                        <span class="status-badge {% if cmd.enabled %}status-online{% else %}status-offline{% endif %}">
+                            {{ 'Enabled' if cmd.enabled else 'Disabled' }}
+                        </span>
+                    </td>
+                    <td class="actions-cell">
+                        <button class="btn btn-sm btn-secondary" onclick="editCommand('{{ cmd.name }}')">Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteCommand('{{ cmd.name }}')">Delete</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="empty-state">No custom commands yet. Click "Add Command" to create one.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Available Variables</h3>
+    </div>
+    <div class="card-body">
+        <div class="variables-grid">
+            {% for var, desc in variables.items() %}
+            <div class="variable-item">
+                <code>{{ var }}</code>
+                <span>{{ desc }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal" id="commandModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle">Add Command</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <form id="commandForm" method="POST">
+            <input type="hidden" name="action" id="formAction" value="add">
+            <input type="hidden" name="original_name" id="originalName">
+            
+            <div class="form-group">
+                <label for="cmdName">Command Name</label>
+                <div class="input-prefix">
+                    <span>!</span>
+                    <input type="text" id="cmdName" name="name" required pattern="[a-zA-Z0-9_]+" placeholder="command">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="cmdResponse">Response</label>
+                <textarea id="cmdResponse" name="response" rows="3" required placeholder="Hello $(user)! Welcome to the stream!"></textarea>
+                <small>Use variables like $(user), $(count), $(random.1-100)</small>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="cmdPermission">Permission Level</label>
+                    <select id="cmdPermission" name="permission_level">
+                        <option value="everyone">Everyone</option>
+                        <option value="follower">Follower</option>
+                        <option value="subscriber">Subscriber</option>
+                        <option value="vip">VIP</option>
+                        <option value="moderator">Moderator</option>
+                        <option value="owner">Owner</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="cmdCooldownUser">User Cooldown (s)</label>
+                    <input type="number" id="cmdCooldownUser" name="cooldown_user" value="5" min="0" max="3600">
+                </div>
+                
+                <div class="form-group">
+                    <label for="cmdCooldownGlobal">Global Cooldown (s)</label>
+                    <input type="number" id="cmdCooldownGlobal" name="cooldown_global" value="0" min="0" max="3600">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="cmdAliases">Aliases (space-separated)</label>
+                <input type="text" id="cmdAliases" name="aliases" placeholder="alias1 alias2">
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="cmdEnabled" name="enabled" checked>
+                    <span>Enabled</span>
+                </label>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Command</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.variables-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 0.5rem;
+}
+.variable-item {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+.variable-item code {
+    color: var(--accent);
+    white-space: nowrap;
+}
+.response-cell {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.input-prefix {
+    display: flex;
+    align-items: center;
+}
+.input-prefix span {
+    padding: 0.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+}
+.input-prefix input {
+    border-radius: 0 4px 4px 0;
+}
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+.badge-everyone { background: var(--success); }
+.badge-follower { background: var(--info); }
+.badge-subscriber { background: var(--warning); }
+.badge-vip { background: #e91e63; }
+.badge-moderator { background: var(--accent); }
+.badge-owner { background: var(--danger); }
+</style>
+
+<script>
+function showAddModal() {
+    document.getElementById('modalTitle').textContent = 'Add Command';
+    document.getElementById('formAction').value = 'add';
+    document.getElementById('commandForm').reset();
+    document.getElementById('cmdEnabled').checked = true;
+    document.getElementById('commandModal').classList.add('show');
+}
+
+function editCommand(name) {
+    const row = document.querySelector(`tr[data-name="${name}"]`);
+    document.getElementById('modalTitle').textContent = 'Edit Command';
+    document.getElementById('formAction').value = 'edit';
+    document.getElementById('originalName').value = name;
+    document.getElementById('cmdName').value = name;
+    // Fetch full command data via API
+    fetch(`/api/command/${name}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('cmdResponse').value = data.command.response;
+                document.getElementById('cmdPermission').value = data.command.permission_level;
+                document.getElementById('cmdCooldownUser').value = data.command.cooldown_user;
+                document.getElementById('cmdCooldownGlobal').value = data.command.cooldown_global;
+                document.getElementById('cmdAliases').value = data.command.aliases || '';
+                document.getElementById('cmdEnabled').checked = data.command.enabled;
+            }
+        });
+    document.getElementById('commandModal').classList.add('show');
+}
+
+function deleteCommand(name) {
+    if (confirm(`Delete command !${name}?`)) {
+        fetch(`/api/command/${name}/delete`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Failed to delete command');
+                }
+            });
+    }
+}
+
+function closeModal() {
+    document.getElementById('commandModal').classList.remove('show');
+}
+
+function filterCommands() {
+    const search = document.getElementById('searchCommands').value.toLowerCase();
+    const rows = document.querySelectorAll('#commandsTable tbody tr');
+    rows.forEach(row => {
+        const name = row.dataset.name || '';
+        row.style.display = name.includes(search) ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

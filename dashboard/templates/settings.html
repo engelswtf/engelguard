@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - EngelGuard{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<form method="POST" class="settings-form">
+    <div class="settings-grid">
+        <!-- Bot Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Bot Settings</h2>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label for="prefix">Command Prefix</label>
+                    <input type="text" id="prefix" name="prefix" 
+                           value="{{ settings.prefix }}" 
+                           maxlength="3" class="input-small">
+                    <span class="form-hint">Character(s) that trigger commands (e.g., !, ?)</span>
+                </div>
+                
+                <div class="form-section">
+                    <h3>Enabled Cogs</h3>
+                    <div class="toggle-group">
+                        <label class="toggle">
+                            <input type="checkbox" name="enable_moderation" 
+                                   {% if settings.enable_moderation %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Moderation Commands</span>
+                        </label>
+                        
+                        <label class="toggle">
+                            <input type="checkbox" name="enable_fun_commands" 
+                                   {% if settings.enable_fun_commands %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Fun Commands</span>
+                        </label>
+                        
+                        <label class="toggle">
+                            <input type="checkbox" name="enable_info_commands" 
+                                   {% if settings.enable_info_commands %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Info Commands</span>
+                        </label>
+                        
+                        <label class="toggle">
+                            <input type="checkbox" name="enable_admin_commands" 
+                                   {% if settings.enable_admin_commands %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Admin Commands</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- AutoMod Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h2>AutoMod Settings</h2>
+            </div>
+            <div class="card-body">
+                <label class="toggle">
+                    <input type="checkbox" name="automod_enabled" 
+                           {% if settings.automod_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">Enable AutoMod</span>
+                </label>
+                
+                <div class="form-group" style="margin-top: 1.5rem;">
+                    <label>Sensitivity Level</label>
+                    <div class="sensitivity-slider">
+                        <input type="range" id="sensitivity" name="automod_sensitivity_value" 
+                               min="1" max="3" 
+                               value="{% if settings.automod_sensitivity == 'low' %}1{% elif settings.automod_sensitivity == 'high' %}3{% else %}2{% endif %}"
+                               oninput="updateSensitivity(this.value)">
+                        <input type="hidden" name="automod_sensitivity" id="sensitivityValue" 
+                               value="{{ settings.automod_sensitivity }}">
+                        <div class="sensitivity-labels">
+                            <span class="{% if settings.automod_sensitivity == 'low' %}active{% endif %}">Low</span>
+                            <span class="{% if settings.automod_sensitivity == 'medium' %}active{% endif %}">Medium</span>
+                            <span class="{% if settings.automod_sensitivity == 'high' %}active{% endif %}">High</span>
+                        </div>
+                    </div>
+                    <span class="form-hint">
+                        Low = Less strict, fewer false positives<br>
+                        High = More strict, catches more spam
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Whitelisted Users -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Whitelisted Users</h2>
+            </div>
+            <div class="card-body">
+                {% if whitelisted_users %}
+                <div class="whitelist-users">
+                    {% for user in whitelisted_users %}
+                    <span class="user-tag">
+                        {{ user }}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="no-data">No whitelisted users</p>
+                {% endif %}
+                <p class="form-hint" style="margin-top: 1rem;">
+                    Use <code>!whitelist @username</code> in chat to add users
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+            💾 Save Settings
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="restartBot()">
+            🔄 Restart Bot
+        </button>
+    </div>
+</form>
+
+<script>
+function updateSensitivity(value) {
+    const labels = ['low', 'medium', 'high'];
+    document.getElementById('sensitivityValue').value = labels[value - 1];
+    
+    const spans = document.querySelectorAll('.sensitivity-labels span');
+    spans.forEach((span, index) => {
+        span.classList.toggle('active', index === value - 1);
+    });
+}
+
+function restartBot() {
+    if (confirm('Are you sure you want to restart the bot?')) {
+        fetch('/api/bot/restart', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Bot restarted successfully!');
+                    location.reload();
+                } else {
+                    alert('Failed to restart: ' + data.error);
+                }
+            })
+            .catch(err => alert('Error: ' + err));
+    }
+}
+</script>
+{% endblock %}

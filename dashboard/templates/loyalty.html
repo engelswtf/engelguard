@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}Loyalty - EngelGuard Dashboard{% endblock %}
+{% block page_title %}Loyalty Points{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <p class="page-description">Reward viewers with points for watching and chatting.</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Loyalty Settings</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('loyalty_page') }}">
+            <input type="hidden" name="action" value="settings">
+            
+            <div class="form-group">
+                <label class="toggle-label">
+                    <span>Enable Loyalty System</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" name="enabled" {% if settings.enabled %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </label>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="pointsName">Points Name</label>
+                    <input type="text" id="pointsName" name="points_name" value="{{ settings.points_name }}" placeholder="points">
+                    <small>What to call your points (e.g., "coins", "gems", "bucks")</small>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="pointsPerMinute">Points per Minute</label>
+                    <input type="number" id="pointsPerMinute" name="points_per_minute" value="{{ settings.points_per_minute }}" step="0.1" min="0">
+                    <small>Points earned per minute watching</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="pointsPerMessage">Points per Message</label>
+                    <input type="number" id="pointsPerMessage" name="points_per_message" value="{{ settings.points_per_message }}" step="0.1" min="0">
+                    <small>Points earned per chat message</small>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="subMultiplier">Subscriber Multiplier</label>
+                    <input type="number" id="subMultiplier" name="bonus_sub_multiplier" value="{{ settings.bonus_sub_multiplier }}" step="0.1" min="1">
+                    <small>Point multiplier for subscribers</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="vipMultiplier">VIP Multiplier</label>
+                    <input type="number" id="vipMultiplier" name="bonus_vip_multiplier" value="{{ settings.bonus_vip_multiplier }}" step="0.1" min="1">
+                    <small>Point multiplier for VIPs</small>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Save Settings</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Leaderboard (Top 25)</h3>
+    </div>
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Username</th>
+                    <th>{{ settings.points_name|capitalize }}</th>
+                    <th>Watch Time</th>
+                    <th>Messages</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in leaderboard %}
+                <tr>
+                    <td><span class="rank-badge rank-{{ loop.index }}">{{ loop.index }}</span></td>
+                    <td><strong>{{ user.username }}</strong></td>
+                    <td>{{ user.points|int|default(0) }}</td>
+                    <td>{{ (user.watch_time_minutes // 60)|int }}h {{ (user.watch_time_minutes % 60)|int }}m</td>
+                    <td>{{ user.message_count|default(0) }}</td>
+                    <td class="actions-cell">
+                        <button class="btn btn-sm btn-secondary" onclick="adjustPoints('{{ user.user_id }}', '{{ user.username }}')">Adjust</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="empty-state">No loyalty data yet. Enable the system and users will start earning points!</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Adjust Points Modal -->
+<div class="modal" id="adjustModal">
+    <div class="modal-content modal-sm">
+        <div class="modal-header">
+            <h3>Adjust Points: <span id="adjustUsername"></span></h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('loyalty_page') }}">
+            <input type="hidden" name="action" value="adjust">
+            <input type="hidden" name="user_id" id="adjustUserId">
+            
+            <div class="form-group">
+                <label for="adjustAmount">Amount (+/-)</label>
+                <input type="number" id="adjustAmount" name="amount" placeholder="100 or -50">
+                <small>Positive to add, negative to remove</small>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Apply</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.toggle-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+}
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-secondary);
+    transition: 0.3s;
+    border-radius: 24px;
+}
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+input:checked + .toggle-slider {
+    background-color: var(--success);
+}
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 0.85rem;
+    background: var(--bg-secondary);
+}
+.rank-1 { background: gold; color: #000; }
+.rank-2 { background: silver; color: #000; }
+.rank-3 { background: #cd7f32; color: #fff; }
+.modal-sm .modal-content {
+    max-width: 400px;
+}
+</style>
+
+<script>
+function adjustPoints(userId, username) {
+    document.getElementById('adjustUsername').textContent = username;
+    document.getElementById('adjustUserId').value = userId;
+    document.getElementById('adjustAmount').value = '';
+    document.getElementById('adjustModal').classList.add('show');
+}
+
+function closeModal() {
+    document.getElementById('adjustModal').classList.remove('show');
+}
+</script>
+{% endblock %}

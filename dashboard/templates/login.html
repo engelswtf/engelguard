@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Login - EngelGuard Dashboard{% endblock %}
+
+{% block login_content %}
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-logo">🛡️</div>
+            <h1>EngelGuard</h1>
+            <p>Twitch Bot Dashboard</p>
+        </div>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash-message flash-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <form method="POST" class="login-form">
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" 
+                       placeholder="Enter dashboard password" 
+                       required autofocus>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                Login
+            </button>
+        </form>
+        
+        <div class="login-footer">
+            <p>Protected access only</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

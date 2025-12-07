@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Mod Log - EngelGuard{% endblock %}
+{% block page_title %}Moderation Log{% endblock %}
+
+{% block content %}
+<div class="modlog-container">
+    <!-- Filters -->
+    <div class="card filters-card">
+        <form method="GET" class="filters-form">
+            <div class="filter-group">
+                <label for="action">Action Type</label>
+                <select id="action" name="action">
+                    <option value="">All Actions</option>
+                    <option value="flag" {% if filters.action == 'flag' %}selected{% endif %}>Flag</option>
+                    <option value="delete" {% if filters.action == 'delete' %}selected{% endif %}>Delete</option>
+                    <option value="timeout" {% if filters.action == 'timeout' %}selected{% endif %}>Timeout</option>
+                    <option value="ban" {% if filters.action == 'ban' %}selected{% endif %}>Ban</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" 
+                       value="{{ filters.username }}" placeholder="Search username...">
+            </div>
+            
+            <div class="filter-group">
+                <label for="date_from">From Date</label>
+                <input type="date" id="date_from" name="date_from" value="{{ filters.date_from }}">
+            </div>
+            
+            <div class="filter-group">
+                <label for="date_to">To Date</label>
+                <input type="date" id="date_to" name="date_to" value="{{ filters.date_to }}">
+            </div>
+            
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-primary">🔍 Filter</button>
+                <a href="{{ url_for('modlog') }}" class="btn btn-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Results -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Actions ({{ total_count }} total)</h2>
+        </div>
+        <div class="card-body">
+            {% if actions %}
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>User</th>
+                            <th>Action</th>
+                            <th>Score</th>
+                            <th>Reason</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for action in actions %}
+                        <tr>
+                            <td class="col-time">{{ action.timestamp[:16] }}</td>
+                            <td class="col-user">
+                                <a href="{{ url_for('users', search=action.username) }}">
+                                    {{ action.username }}
+                                </a>
+                            </td>
+                            <td class="col-action">
+                                <span class="action-badge action-{{ action.action }}">
+                                    {{ action.action }}
+                                </span>
+                            </td>
+                            <td class="col-score">{{ action.spam_score }}</td>
+                            <td class="col-reason" title="{{ action.reason }}">
+                                {{ action.reason[:40] }}{% if action.reason|length > 40 %}...{% endif %}
+                            </td>
+                            <td class="col-message" title="{{ action.message_content }}">
+                                {{ action.message_content[:30] }}{% if action.message_content|length > 30 %}...{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                {% if page > 1 %}
+                <a href="{{ url_for('modlog', page=page-1, action=filters.action, username=filters.username, date_from=filters.date_from, date_to=filters.date_to) }}" 
+                   class="btn btn-secondary">← Previous</a>
+                {% endif %}
+                
+                <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+                
+                {% if page < total_pages %}
+                <a href="{{ url_for('modlog', page=page+1, action=filters.action, username=filters.username, date_from=filters.date_from, date_to=filters.date_to) }}" 
+                   class="btn btn-secondary">Next →</a>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% else %}
+            <p class="no-data">No moderation actions found matching your filters.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

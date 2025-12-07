@@ -1,0 +1,1024 @@
+"""
+EngelGuard Dashboard - Flask Web Application
+
+A modern web dashboard for managing the EngelGuard Twitch bot.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import json
+import sqlite3
+import hashlib
+import secrets
+import subprocess
+from datetime import datetime, timedelta
+from functools import wraps
+from pathlib import Path
+from typing import Any, Optional
+
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    flash,
+    jsonify,
+)
+from dotenv import load_dotenv, set_key
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Load environment variables
+ENV_FILE = Path(__file__).parent.parent / ".env"
+load_dotenv(ENV_FILE)
+
+app = Flask(__name__)
+app.secret_key = os.getenv("DASHBOARD_SECRET_KEY", secrets.token_hex(32))
+app.permanent_session_lifetime = timedelta(hours=1)
+
+# Database path
+DB_PATH = Path(__file__).parent.parent / "data" / "automod.db"
+
+# Variable documentation
+VARIABLE_DOCS = {
+    "$(user)": "Username of command caller",
+    "$(user.id)": "User ID of command caller",
+    "$(target)": "Mentioned user or command caller",
+    "$(channel)": "Channel name",
+    "$(count)": "Command use count",
+    "$(args)": "All arguments after command",
+    "$(args.1)": "First argument",
+    "$(random)": "Random number 1-100",
+    "$(random.1-100)": "Random number in range",
+    "$(random.pick a,b,c)": "Random choice from list",
+    "$(time)": "Current time",
+    "$(date)": "Current date",
+    "$(uptime)": "Stream uptime",
+    "$(urlfetch URL)": "Fetch text from URL",
+}
+
+
+def get_db_connection() -> sqlite3.Connection:
+    """Get a database connection."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def hash_password(password: str) -> str:
+    """Hash a password using SHA-256."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def login_required(f):
+    """Decorator to require login for routes."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def get_env_value(key: str, default: str = "") -> str:
+    """Get a value from the .env file."""
+    load_dotenv(ENV_FILE, override=True)
+    return os.getenv(key, default)
+
+
+def set_env_value(key: str, value: str) -> None:
+    """Set a value in the .env file."""
+    set_key(str(ENV_FILE), key, value)
+
+
+def mask_secret(value: str, show_chars: int = 4) -> str:
+    """Mask a secret value, showing only last few characters."""
+    if not value or len(value) <= show_chars:
+        return "*" * 8
+    return "*" * (len(value) - show_chars) + value[-show_chars:]
+
+
+def get_bot_status() -> dict[str, Any]:
+    """Get current bot status."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", "twitch-bot"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        is_running = result.stdout.strip() == "active"
+    except Exception:
+        is_running = False
+    
+    uptime = "Unknown"
+    if is_running:
+        try:
+            result = subprocess.run(
+                ["systemctl", "show", "twitch-bot", "--property=ActiveEnterTimestamp"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            timestamp_str = result.stdout.strip().split("=")[1]
+            if timestamp_str:
+                start_time = datetime.strptime(timestamp_str.split(".")[0], "%a %Y-%m-%d %H:%M:%S")
+                delta = datetime.now() - start_time
+                hours, remainder = divmod(int(delta.total_seconds()), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                if hours > 24:
+                    days = hours // 24
+                    hours = hours % 24
+                    uptime = f"{days}d {hours}h {minutes}m"
+                else:
+                    uptime = f"{hours}h {minutes}m {seconds}s"
+        except Exception:
+            uptime = "Unknown"
+    
+    return {
+        "is_running": is_running,
+        "status": "Online" if is_running else "Offline",
+        "uptime": uptime
+    }
+
+
+def get_dashboard_stats() -> dict[str, Any]:
+    """Get dashboard statistics."""
+    stats = {
+        "messages_today": 0,
+        "actions_today": 0,
+        "users_tracked": 0,
+        "actions_by_type": {}
+    }
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM mod_actions 
+            WHERE date(timestamp) = date('now')
+        """)
+        row = cursor.fetchone()
+        stats["actions_today"] = row["count"] if row else 0
+        
+        cursor.execute("SELECT COUNT(*) as count FROM users")
+        row = cursor.fetchone()
+        stats["users_tracked"] = row["count"] if row else 0
+        
+        cursor.execute("""
+            SELECT action, COUNT(*) as count 
+            FROM mod_actions 
+            WHERE timestamp > datetime('now', '-24 hours')
+            GROUP BY action
+        """)
+        stats["actions_by_type"] = {row["action"]: row["count"] for row in cursor.fetchall()}
+        
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Error getting stats: {e}")
+    
+    return stats
+
+
+def get_recent_actions(limit: int = 10) -> list[dict]:
+    """Get recent moderation actions."""
+    actions = []
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM mod_actions 
+            ORDER BY timestamp DESC 
+            LIMIT ?
+        """, (limit,))
+        actions = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Error getting recent actions: {e}")
+    return actions
+
+
+# ==================== Routes ====================
+
+@app.route("/")
+def index():
+    """Redirect to dashboard or login."""
+    if session.get("logged_in"):
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Login page."""
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        stored_password = get_env_value("DASHBOARD_PASSWORD", "changeme123")
+        
+        if password == stored_password:
+            session.permanent = True
+            session["logged_in"] = True
+            flash("Successfully logged in!", "success")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Invalid password", "error")
+    
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    """Logout and clear session."""
+    session.clear()
+    flash("You have been logged out.", "info")
+    return redirect(url_for("login"))
+
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    """Main dashboard page."""
+    bot_status = get_bot_status()
+    stats = get_dashboard_stats()
+    recent_actions = get_recent_actions(10)
+    
+    return render_template(
+        "dashboard.html",
+        bot_status=bot_status,
+        stats=stats,
+        recent_actions=recent_actions
+    )
+
+
+@app.route("/commands", methods=["GET", "POST"])
+@login_required
+def commands_page():
+    """Custom commands page."""
+    if request.method == "POST":
+        action = request.form.get("action")
+        name = request.form.get("name", "").lower().strip()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if action == "add":
+            try:
+                aliases = request.form.get("aliases", "").split()
+                cursor.execute("""
+                    INSERT INTO custom_commands 
+                    (name, response, created_by, cooldown_user, cooldown_global, permission_level, enabled, aliases)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    name,
+                    request.form.get("response"),
+                    "dashboard",
+                    int(request.form.get("cooldown_user", 5)),
+                    int(request.form.get("cooldown_global", 0)),
+                    request.form.get("permission_level", "everyone"),
+                    request.form.get("enabled") == "on",
+                    json.dumps(aliases) if aliases else None
+                ))
+                conn.commit()
+                flash(f"Command !{name} created!", "success")
+            except Exception as e:
+                flash(f"Error creating command: {e}", "error")
+        
+        elif action == "edit":
+            original_name = request.form.get("original_name", "").lower()
+            aliases = request.form.get("aliases", "").split()
+            cursor.execute("""
+                UPDATE custom_commands SET
+                    name = ?, response = ?, cooldown_user = ?, cooldown_global = ?,
+                    permission_level = ?, enabled = ?, aliases = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = ?
+            """, (
+                name,
+                request.form.get("response"),
+                int(request.form.get("cooldown_user", 5)),
+                int(request.form.get("cooldown_global", 0)),
+                request.form.get("permission_level", "everyone"),
+                request.form.get("enabled") == "on",
+                json.dumps(aliases) if aliases else None,
+                original_name
+            ))
+            conn.commit()
+            flash(f"Command !{name} updated!", "success")
+        
+        conn.close()
+        return redirect(url_for("commands_page"))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM custom_commands ORDER BY name")
+    commands = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    
+    return render_template("commands.html", commands=commands, variables=VARIABLE_DOCS)
+
+
+@app.route("/timers", methods=["GET", "POST"])
+@login_required
+def timers_page():
+    """Timers page."""
+    if request.method == "POST":
+        action = request.form.get("action")
+        name = request.form.get("name", "").lower().strip()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if action == "add":
+            try:
+                cursor.execute("""
+                    INSERT INTO timers 
+                    (name, message, interval_minutes, chat_lines_required, online_only, enabled, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    name,
+                    request.form.get("message"),
+                    int(request.form.get("interval_minutes", 15)),
+                    int(request.form.get("chat_lines_required", 5)),
+                    request.form.get("online_only") == "on",
+                    request.form.get("enabled") == "on",
+                    "dashboard"
+                ))
+                conn.commit()
+                flash(f"Timer '{name}' created!", "success")
+            except Exception as e:
+                flash(f"Error creating timer: {e}", "error")
+        
+        elif action == "edit":
+            original_name = request.form.get("original_name", "").lower()
+            cursor.execute("""
+                UPDATE timers SET
+                    name = ?, message = ?, interval_minutes = ?, chat_lines_required = ?,
+                    online_only = ?, enabled = ?
+                WHERE name = ?
+            """, (
+                name,
+                request.form.get("message"),
+                int(request.form.get("interval_minutes", 15)),
+                int(request.form.get("chat_lines_required", 5)),
+                request.form.get("online_only") == "on",
+                request.form.get("enabled") == "on",
+                original_name
+            ))
+            conn.commit()
+            flash(f"Timer '{name}' updated!", "success")
+        
+        conn.close()
+        return redirect(url_for("timers_page"))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM timers ORDER BY name")
+    timers = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    
+    return render_template("timers.html", timers=timers)
+
+
+@app.route("/strikes")
+@login_required
+def strikes_page():
+    """Strikes page."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get users with strikes
+    cursor.execute("SELECT * FROM user_strikes WHERE strike_count > 0 ORDER BY strike_count DESC")
+    users_with_strikes = [dict(row) for row in cursor.fetchall()]
+    
+    # Get total strikes
+    total_strikes = sum(u["strike_count"] for u in users_with_strikes)
+    
+    # Get recent strike history
+    cursor.execute("SELECT * FROM strike_history ORDER BY timestamp DESC LIMIT 50")
+    strike_history = [dict(row) for row in cursor.fetchall()]
+    
+    conn.close()
+    
+    expire_days = int(get_env_value("STRIKE_EXPIRE_DAYS", "30"))
+    max_strikes = int(get_env_value("STRIKE_MAX_BEFORE_BAN", "5"))
+    
+    return render_template(
+        "strikes.html",
+        users_with_strikes=users_with_strikes,
+        total_strikes=total_strikes,
+        strike_history=strike_history,
+        expire_days=expire_days,
+        max_strikes=max_strikes
+    )
+
+
+@app.route("/loyalty", methods=["GET", "POST"])
+@login_required
+def loyalty_page():
+    """Loyalty points page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    if request.method == "POST":
+        action = request.form.get("action")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if action == "settings":
+            cursor.execute("""
+                INSERT INTO loyalty_settings 
+                (channel, enabled, points_name, points_per_minute, points_per_message, bonus_sub_multiplier, bonus_vip_multiplier)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(channel) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    points_name = excluded.points_name,
+                    points_per_minute = excluded.points_per_minute,
+                    points_per_message = excluded.points_per_message,
+                    bonus_sub_multiplier = excluded.bonus_sub_multiplier,
+                    bonus_vip_multiplier = excluded.bonus_vip_multiplier
+            """, (
+                channel,
+                request.form.get("enabled") == "on",
+                request.form.get("points_name", "points"),
+                float(request.form.get("points_per_minute", 1)),
+                float(request.form.get("points_per_message", 0.5)),
+                float(request.form.get("bonus_sub_multiplier", 2)),
+                float(request.form.get("bonus_vip_multiplier", 1.5))
+            ))
+            conn.commit()
+            flash("Loyalty settings saved!", "success")
+        
+        elif action == "adjust":
+            user_id = request.form.get("user_id")
+            amount = int(request.form.get("amount", 0))
+            cursor.execute("""
+                UPDATE user_loyalty SET points = points + ? WHERE user_id = ? AND channel = ?
+            """, (amount, user_id, channel))
+            conn.commit()
+            flash(f"Points adjusted by {amount}", "success")
+        
+        conn.close()
+        return redirect(url_for("loyalty_page"))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get settings
+    cursor.execute("SELECT * FROM loyalty_settings WHERE channel = ?", (channel,))
+    row = cursor.fetchone()
+    settings = dict(row) if row else {
+        "enabled": False,
+        "points_name": "points",
+        "points_per_minute": 1.0,
+        "points_per_message": 0.5,
+        "bonus_sub_multiplier": 2.0,
+        "bonus_vip_multiplier": 1.5
+    }
+    
+    # Get leaderboard
+    cursor.execute("""
+        SELECT * FROM user_loyalty WHERE channel = ? ORDER BY points DESC LIMIT 25
+    """, (channel,))
+    leaderboard = [dict(row) for row in cursor.fetchall()]
+    
+    conn.close()
+    
+    return render_template("loyalty.html", settings=settings, leaderboard=leaderboard)
+
+
+@app.route("/filters", methods=["GET", "POST"])
+@login_required
+def filters_page():
+    """Filters page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    if request.method == "POST":
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO filter_settings 
+            (channel, caps_enabled, caps_min_length, caps_max_percent, emote_enabled, emote_max_count,
+             symbol_enabled, symbol_max_percent, link_enabled, length_enabled, length_max_chars,
+             repetition_enabled, repetition_max_words, zalgo_enabled, lookalike_enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(channel) DO UPDATE SET
+                caps_enabled = excluded.caps_enabled,
+                caps_min_length = excluded.caps_min_length,
+                caps_max_percent = excluded.caps_max_percent,
+                emote_enabled = excluded.emote_enabled,
+                emote_max_count = excluded.emote_max_count,
+                symbol_enabled = excluded.symbol_enabled,
+                symbol_max_percent = excluded.symbol_max_percent,
+                link_enabled = excluded.link_enabled,
+                length_enabled = excluded.length_enabled,
+                length_max_chars = excluded.length_max_chars,
+                repetition_enabled = excluded.repetition_enabled,
+                repetition_max_words = excluded.repetition_max_words,
+                zalgo_enabled = excluded.zalgo_enabled,
+                lookalike_enabled = excluded.lookalike_enabled
+        """, (
+            channel,
+            request.form.get("caps_enabled") == "on",
+            int(request.form.get("caps_min_length", 10)),
+            int(request.form.get("caps_max_percent", 70)),
+            request.form.get("emote_enabled") == "on",
+            int(request.form.get("emote_max_count", 15)),
+            request.form.get("symbol_enabled") == "on",
+            int(request.form.get("symbol_max_percent", 50)),
+            request.form.get("link_enabled") == "on",
+            request.form.get("length_enabled") == "on",
+            int(request.form.get("length_max_chars", 500)),
+            request.form.get("repetition_enabled") == "on",
+            int(request.form.get("repetition_max_words", 10)),
+            request.form.get("zalgo_enabled") == "on",
+            request.form.get("lookalike_enabled") == "on"
+        ))
+        conn.commit()
+        conn.close()
+        
+        flash("Filter settings saved!", "success")
+        return redirect(url_for("filters_page"))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM filter_settings WHERE channel = ?", (channel,))
+    row = cursor.fetchone()
+    settings = dict(row) if row else {
+        "caps_enabled": True,
+        "caps_min_length": 10,
+        "caps_max_percent": 70,
+        "emote_enabled": True,
+        "emote_max_count": 15,
+        "symbol_enabled": True,
+        "symbol_max_percent": 50,
+        "link_enabled": True,
+        "length_enabled": True,
+        "length_max_chars": 500,
+        "repetition_enabled": True,
+        "repetition_max_words": 10,
+        "zalgo_enabled": True,
+        "lookalike_enabled": True
+    }
+    conn.close()
+    
+    return render_template("filters.html", settings=settings)
+
+
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings():
+    """Bot settings page."""
+    if request.method == "POST":
+        prefix = request.form.get("prefix", "!")
+        set_env_value("BOT_PREFIX", prefix)
+        
+        features = ["ENABLE_MODERATION", "ENABLE_FUN_COMMANDS", "ENABLE_INFO_COMMANDS", "ENABLE_ADMIN_COMMANDS"]
+        for feature in features:
+            value = "true" if request.form.get(feature.lower()) else "false"
+            set_env_value(feature, value)
+        
+        automod_enabled = "true" if request.form.get("automod_enabled") else "false"
+        set_env_value("AUTOMOD_ENABLED", automod_enabled)
+        
+        sensitivity = request.form.get("automod_sensitivity", "medium")
+        set_env_value("AUTOMOD_SENSITIVITY", sensitivity)
+        
+        flash("Settings saved! Restart the bot for changes to take effect.", "success")
+        return redirect(url_for("settings"))
+    
+    current_settings = {
+        "prefix": get_env_value("BOT_PREFIX", "!"),
+        "enable_moderation": get_env_value("ENABLE_MODERATION", "true").lower() == "true",
+        "enable_fun_commands": get_env_value("ENABLE_FUN_COMMANDS", "true").lower() == "true",
+        "enable_info_commands": get_env_value("ENABLE_INFO_COMMANDS", "true").lower() == "true",
+        "enable_admin_commands": get_env_value("ENABLE_ADMIN_COMMANDS", "true").lower() == "true",
+        "automod_enabled": get_env_value("AUTOMOD_ENABLED", "true").lower() == "true",
+        "automod_sensitivity": get_env_value("AUTOMOD_SENSITIVITY", "medium"),
+    }
+    
+    whitelisted_users = []
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM users WHERE is_whitelisted = 1")
+        whitelisted_users = [row["username"] for row in cursor.fetchall()]
+        conn.close()
+    except Exception:
+        pass
+    
+    return render_template("settings.html", settings=current_settings, whitelisted_users=whitelisted_users)
+
+
+@app.route("/credentials", methods=["GET", "POST"])
+@login_required
+def credentials():
+    """Credentials management page."""
+    if request.method == "POST":
+        action = request.form.get("action")
+        
+        if action == "save":
+            fields = [
+                "TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET", 
+                "TWITCH_OAUTH_TOKEN", "TWITCH_BOT_NICK",
+                "TWITCH_CHANNELS", "BOT_OWNER"
+            ]
+            
+            for field in fields:
+                value = request.form.get(field.lower(), "")
+                if value and not value.startswith("*"):
+                    set_env_value(field, value)
+            
+            flash("Credentials saved! Restart the bot for changes to take effect.", "success")
+        
+        elif action == "restart":
+            try:
+                subprocess.run(["systemctl", "restart", "twitch-bot"], check=True, timeout=30)
+                flash("Bot restarted successfully!", "success")
+            except subprocess.CalledProcessError:
+                flash("Failed to restart bot. Check system logs.", "error")
+            except subprocess.TimeoutExpired:
+                flash("Restart command timed out.", "warning")
+        
+        return redirect(url_for("credentials"))
+    
+    current_creds = {
+        "client_id": mask_secret(get_env_value("TWITCH_CLIENT_ID")),
+        "client_secret": mask_secret(get_env_value("TWITCH_CLIENT_SECRET")),
+        "oauth_token": mask_secret(get_env_value("TWITCH_OAUTH_TOKEN")),
+        "bot_nick": get_env_value("TWITCH_BOT_NICK"),
+        "channels": get_env_value("TWITCH_CHANNELS"),
+        "owner": get_env_value("BOT_OWNER"),
+    }
+    
+    return render_template("credentials.html", credentials=current_creds)
+
+
+@app.route("/modlog")
+@login_required
+def modlog():
+    """Moderation log page."""
+    action_filter = request.args.get("action", "")
+    username_filter = request.args.get("username", "")
+    date_from = request.args.get("date_from", "")
+    date_to = request.args.get("date_to", "")
+    page = int(request.args.get("page", 1))
+    per_page = 25
+    
+    actions = []
+    total_count = 0
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM mod_actions WHERE 1=1"
+        count_query = "SELECT COUNT(*) as count FROM mod_actions WHERE 1=1"
+        params = []
+        
+        if action_filter:
+            query += " AND action = ?"
+            count_query += " AND action = ?"
+            params.append(action_filter)
+        
+        if username_filter:
+            query += " AND username LIKE ?"
+            count_query += " AND username LIKE ?"
+            params.append(f"%{username_filter}%")
+        
+        if date_from:
+            query += " AND date(timestamp) >= ?"
+            count_query += " AND date(timestamp) >= ?"
+            params.append(date_from)
+        
+        if date_to:
+            query += " AND date(timestamp) <= ?"
+            count_query += " AND date(timestamp) <= ?"
+            params.append(date_to)
+        
+        cursor.execute(count_query, params)
+        total_count = cursor.fetchone()["count"]
+        
+        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([per_page, (page - 1) * per_page])
+        
+        cursor.execute(query, params)
+        actions = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Error getting mod log: {e}")
+    
+    total_pages = (total_count + per_page - 1) // per_page
+    
+    return render_template(
+        "modlog.html",
+        actions=actions,
+        page=page,
+        total_pages=total_pages,
+        total_count=total_count,
+        filters={
+            "action": action_filter,
+            "username": username_filter,
+            "date_from": date_from,
+            "date_to": date_to
+        }
+    )
+
+
+@app.route("/users")
+@login_required
+def users():
+    """Users management page."""
+    search = request.args.get("search", "")
+    filter_type = request.args.get("filter", "")
+    page = int(request.args.get("page", 1))
+    per_page = 25
+    
+    users_list = []
+    total_count = 0
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM users WHERE 1=1"
+        count_query = "SELECT COUNT(*) as count FROM users WHERE 1=1"
+        params = []
+        
+        if search:
+            query += " AND username LIKE ?"
+            count_query += " AND username LIKE ?"
+            params.append(f"%{search}%")
+        
+        if filter_type == "whitelisted":
+            query += " AND is_whitelisted = 1"
+            count_query += " AND is_whitelisted = 1"
+        elif filter_type == "warned":
+            query += " AND warnings_count > 0"
+            count_query += " AND warnings_count > 0"
+        elif filter_type == "low_trust":
+            query += " AND trust_score < 30"
+            count_query += " AND trust_score < 30"
+        
+        cursor.execute(count_query, params)
+        total_count = cursor.fetchone()["count"]
+        
+        query += " ORDER BY last_message DESC NULLS LAST LIMIT ? OFFSET ?"
+        params.extend([per_page, (page - 1) * per_page])
+        
+        cursor.execute(query, params)
+        users_list = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Error getting users: {e}")
+    
+    total_pages = (total_count + per_page - 1) // per_page
+    
+    return render_template(
+        "users.html",
+        users=users_list,
+        page=page,
+        total_pages=total_pages,
+        total_count=total_count,
+        search=search,
+        filter_type=filter_type
+    )
+
+
+# ==================== API Routes ====================
+
+@app.route("/api/command/<name>")
+@login_required
+def get_command(name: str):
+    """Get command details."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM custom_commands WHERE name = ?", (name.lower(),))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            cmd = dict(row)
+            cmd["aliases"] = " ".join(json.loads(cmd["aliases"])) if cmd.get("aliases") else ""
+            return jsonify({"success": True, "command": cmd})
+        return jsonify({"success": False, "error": "Not found"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/command/<name>/delete", methods=["POST"])
+@login_required
+def delete_command(name: str):
+    """Delete a command."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM custom_commands WHERE name = ?", (name.lower(),))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/timer/<name>")
+@login_required
+def get_timer(name: str):
+    """Get timer details."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM timers WHERE name = ?", (name.lower(),))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return jsonify({"success": True, "timer": dict(row)})
+        return jsonify({"success": False, "error": "Not found"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/timer/<name>/delete", methods=["POST"])
+@login_required
+def delete_timer(name: str):
+    """Delete a timer."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM timers WHERE name = ?", (name.lower(),))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/timer/<name>/toggle", methods=["POST"])
+@login_required
+def toggle_timer(name: str):
+    """Toggle timer enabled state."""
+    try:
+        data = request.get_json()
+        enabled = data.get("enabled", True)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE timers SET enabled = ? WHERE name = ?", (enabled, name.lower()))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/strikes/<user_id>/history")
+@login_required
+def get_strike_history(user_id: str):
+    """Get strike history for a user."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM strike_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT 20
+        """, (user_id,))
+        history = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return jsonify({"success": True, "history": history})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/strikes/<user_id>/clear", methods=["POST"])
+@login_required
+def clear_strikes(user_id: str):
+    """Clear strikes for a user."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE user_strikes SET strike_count = 0, expires_at = NULL WHERE user_id = ?", (user_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/user/<user_id>/whitelist", methods=["POST"])
+@login_required
+def toggle_whitelist(user_id: str):
+    """Toggle user whitelist status."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT is_whitelisted FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        
+        if row:
+            new_status = not bool(row["is_whitelisted"])
+            cursor.execute("UPDATE users SET is_whitelisted = ? WHERE user_id = ?", (new_status, user_id))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "whitelisted": new_status})
+        
+        conn.close()
+        return jsonify({"success": False, "error": "User not found"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/user/<user_id>/history")
+@login_required
+def get_user_history(user_id: str):
+    """Get user moderation history."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM mod_actions WHERE user_id = ? ORDER BY timestamp DESC LIMIT 50
+        """, (user_id,))
+        actions = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return jsonify({"success": True, "actions": actions})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/test-filter", methods=["POST"])
+@login_required
+def test_filter():
+    """Test a message against filters."""
+    try:
+        data = request.get_json()
+        message = data.get("message", "")
+        
+        # Simple test - in production would use actual spam detector
+        score = 0
+        reasons = []
+        
+        # Check caps
+        if len(message) > 10:
+            alpha = [c for c in message if c.isalpha()]
+            if alpha:
+                caps_pct = sum(1 for c in alpha if c.isupper()) / len(alpha) * 100
+                if caps_pct > 70:
+                    score += 20
+                    reasons.append(f"Excessive caps ({caps_pct:.0f}%)")
+        
+        # Check length
+        if len(message) > 500:
+            score += 10
+            reasons.append(f"Too long ({len(message)} chars)")
+        
+        # Check repeated chars
+        import re
+        if re.search(r'(.)\1{4,}', message):
+            score += 15
+            reasons.append("Repeated characters")
+        
+        action = "allow"
+        if score >= 50:
+            action = "timeout"
+        elif score >= 30:
+            action = "delete"
+        elif score >= 20:
+            action = "flag"
+        
+        return jsonify({
+            "success": True,
+            "score": score,
+            "action": action,
+            "reasons": reasons
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/bot/restart", methods=["POST"])
+@login_required
+def restart_bot():
+    """Restart the bot service."""
+    try:
+        subprocess.run(["systemctl", "restart", "twitch-bot"], check=True, timeout=30)
+        return jsonify({"success": True, "message": "Bot restarted successfully"})
+    except subprocess.CalledProcessError as e:
+        return jsonify({"success": False, "error": f"Failed to restart: {e}"}), 500
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "error": "Restart timed out"}), 500
+
+
+@app.route("/api/bot/status")
+@login_required
+def api_bot_status():
+    """Get bot status via API."""
+    return jsonify(get_bot_status())
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False)

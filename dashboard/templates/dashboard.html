@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - EngelGuard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid">
+    <!-- Bot Status Card -->
+    <div class="card status-card">
+        <div class="card-header">
+            <h2>Bot Status</h2>
+        </div>
+        <div class="card-body">
+            <div class="status-display">
+                <div class="status-indicator {{ 'online' if bot_status.is_running else 'offline' }}">
+                    <span class="status-dot-large"></span>
+                    <span class="status-label">{{ bot_status.status }}</span>
+                </div>
+                <div class="status-details">
+                    <div class="detail-item">
+                        <span class="detail-label">Uptime</span>
+                        <span class="detail-value">{{ bot_status.uptime }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="status-actions">
+                <button class="btn btn-secondary" onclick="restartBot()">
+                    🔄 Restart Bot
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Stats -->
+    <div class="card stats-card">
+        <div class="card-header">
+            <h2>Today's Stats</h2>
+        </div>
+        <div class="card-body">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.actions_today }}</span>
+                    <span class="stat-label">Actions Today</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.users_tracked }}</span>
+                    <span class="stat-label">Users Tracked</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Actions by Type -->
+    <div class="card actions-card">
+        <div class="card-header">
+            <h2>Actions (24h)</h2>
+        </div>
+        <div class="card-body">
+            <div class="action-types">
+                {% for action, count in stats.actions_by_type.items() %}
+                <div class="action-type">
+                    <span class="action-badge action-{{ action }}">{{ action }}</span>
+                    <span class="action-count">{{ count }}</span>
+                </div>
+                {% else %}
+                <p class="no-data">No actions in the last 24 hours</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Actions -->
+    <div class="card recent-actions-card">
+        <div class="card-header">
+            <h2>Recent Mod Actions</h2>
+            <a href="{{ url_for('modlog') }}" class="card-link">View All →</a>
+        </div>
+        <div class="card-body">
+            {% if recent_actions %}
+            <div class="actions-list">
+                {% for action in recent_actions %}
+                <div class="action-item">
+                    <div class="action-info">
+                        <span class="action-badge action-{{ action.action }}">{{ action.action }}</span>
+                        <span class="action-user">{{ action.username }}</span>
+                    </div>
+                    <div class="action-details">
+                        <span class="action-reason">{{ action.reason[:50] }}{% if action.reason|length > 50 %}...{% endif %}</span>
+                        <span class="action-time">{{ action.timestamp[:16] }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="no-data">No recent moderation actions</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function restartBot() {
+    if (confirm('Are you sure you want to restart the bot?')) {
+        fetch('/api/bot/restart', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Bot restarted successfully!');
+                    location.reload();
+                } else {
+                    alert('Failed to restart: ' + data.error);
+                }
+            })
+            .catch(err => alert('Error: ' + err));
+    }
+}
+</script>
+{% endblock %}

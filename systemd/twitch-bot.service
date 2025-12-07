@@ -1,0 +1,125 @@
+[Unit]
+Description=Twitch Bot Service
+Documentation=https://github.com/yourusername/twitch-bot
+After=network-online.target
+Wants=network-online.target
+# Restart on failure, but not if stopped manually
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+# ============================================
+# User & Group
+# ============================================
+User=twitchbot
+Group=twitchbot
+
+# ============================================
+# Working Directory & Execution
+# ============================================
+WorkingDirectory=/opt/twitch-bot
+ExecStart=/opt/twitch-bot/venv/bin/python /opt/twitch-bot/run.py
+
+# ============================================
+# Restart Policy
+# ============================================
+# Always restart unless stopped manually
+Restart=always
+# Wait 10s before first restart, then exponential backoff
+RestartSec=10
+# Maximum time to wait between restarts: 5 minutes
+RestartMaxDelaySec=300
+
+# ============================================
+# Environment
+# ============================================
+# Load environment variables from .env file
+EnvironmentFile=/opt/twitch-bot/.env
+# Set Python to unbuffered mode for immediate log output
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+
+# ============================================
+# Logging
+# ============================================
+# Log to systemd journal
+StandardOutput=journal
+StandardError=journal
+# Add identifier for easier log filtering
+SyslogIdentifier=twitch-bot
+
+# ============================================
+# Security Hardening
+# ============================================
+# Prevent privilege escalation
+NoNewPrivileges=true
+
+# Filesystem protection
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/twitch-bot/data /var/log/twitch-bot
+PrivateTmp=true
+
+# Kernel protections
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+
+# Restrict namespaces
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+
+# System call filtering
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete
+
+# Network restrictions (allow only IPv4/IPv6 networking)
+RestrictAddressFamilies=AF_INET AF_INET6
+
+# Capabilities (drop all, bot doesn't need any)
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Prevent access to other processes
+ProtectProc=invisible
+ProcSubset=pid
+
+# Lock down /dev
+PrivateDevices=true
+DevicePolicy=closed
+
+# Memory protections
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# ============================================
+# Resource Limits
+# ============================================
+# Limit CPU usage to 50% of one core
+CPUQuota=50%
+
+# Memory limits (adjust based on your bot's needs)
+MemoryMax=512M
+MemoryHigh=384M
+
+# Limit number of tasks (threads/processes)
+TasksMax=50
+
+# File descriptor limits
+LimitNOFILE=1024
+
+# Process limits
+LimitNPROC=50
+
+# ============================================
+# Watchdog (optional)
+# ============================================
+# If your bot implements watchdog notifications, uncomment:
+# WatchdogSec=60
+# NotifyAccess=main
+
+[Install]
+WantedBy=multi-user.target
