@@ -107,7 +107,7 @@ def get_bot_status() -> dict[str, Any]:
     """Get current bot status."""
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", "twitch-bot"],
+            ["sudo", "systemctl", "is-active", "twitch-bot"],
             capture_output=True,
             text=True,
             timeout=5
@@ -1074,7 +1074,7 @@ def test_filter():
 def restart_bot():
     """Restart the bot service."""
     try:
-        subprocess.run(["systemctl", "restart", "twitch-bot"], check=True, timeout=30)
+        subprocess.run(["sudo", "systemctl", "restart", "twitch-bot"], check=True, timeout=30)
         return jsonify({"success": True, "message": "Bot restarted successfully"})
     except subprocess.CalledProcessError as e:
         return jsonify({"success": False, "error": f"Failed to restart: {e}"}), 500
