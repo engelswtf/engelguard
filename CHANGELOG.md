@@ -5,6 +5,13 @@ All notable changes to EngelGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Operations
+- Added comprehensive operations documentation for container-to-GitHub sync workflow
+- Documented git state verification and synchronization procedures
+- Created runbook for managing bot deployment in Proxmox LXC container 101
+
 ## [1.0.0] - 2024-12-07
 
 ### Added
