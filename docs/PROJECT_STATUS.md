@@ -1,8 +1,8 @@
 # EngelGuard Project Status
 
 **Last Updated:** December 7, 2024  
-**Version:** 1.0.0  
-**Status:** Phase 1 Complete ✅
+**Version:** 2.0.0  
+**Status:** Phase 2 Complete ✅
 
 ---
 
@@ -70,6 +70,9 @@ Host (/root/twitch-bot/):
 8. **timers.py** - Scheduled messages
 9. **loyalty.py** - Points/watch time system (toggleable)
 10. **nuke.py** - Mass moderation tool
+11. **quotes.py** - Quote management
+12. **giveaways.py** - Giveaway system
+13. **songrequests.py** - Song request system
 
 ### ✅ Auto-Moderation
 - Spam detection with pattern matching
@@ -107,9 +110,46 @@ Host (/root/twitch-bot/):
 
 ### ✅ Web Dashboard
 - Modern dark theme
-- Pages: Dashboard, Settings, Commands, Timers, Filters, Mod Log, Users, Strikes, Loyalty, Credentials
+- Pages: Dashboard, Settings, Commands, Timers, Filters, Mod Log, Users, Strikes, Loyalty, Quotes, Giveaways, Song Requests, Credentials
 - Password protected
 - Mobile responsive
+
+---
+
+## Phase 2 Completed Features
+
+### ✅ Quotes System
+- `!addquote <text>` - Add a quote (mod)
+- `!quote [id]` - Get random or specific quote
+- `!delquote <id>` - Delete quote (mod)
+- `!quotes` - Show quote count
+- `!searchquote <term>` - Search quotes
+- Dashboard management at /quotes
+
+### ✅ Giveaway System
+- `!giveaway start <keyword> [duration] [prize]` - Start giveaway (mod)
+- `!giveaway end` - End and pick winner (mod)
+- `!giveaway reroll` - Pick new winner (mod)
+- `!giveaway cancel` - Cancel giveaway (mod)
+- `!giveaway info` - Show giveaway info
+- `!enter` - Enter active giveaway
+- Features: keyword entry, sub luck multiplier, auto-end timer
+- Dashboard management at /giveaways
+
+### ✅ Song Request System
+- `!sr <youtube url>` - Request a song
+- `!queue` - View queue
+- `!currentsong` - Show now playing
+- `!skip` - Skip current (mod)
+- `!volume <0-100>` - Set volume (mod)
+- `!wrongsong` - Remove your last request
+- `!clearqueue` - Clear queue (mod)
+- Dashboard management at /songrequests
+
+### ✅ Global Feature Toggles
+- All cogs can now be enabled/disabled from dashboard
+- Settings page shows all 13 features with toggle switches
+- Changes take effect immediately
 
 ---
 
@@ -153,46 +193,38 @@ filter_settings (channel, caps_enabled, caps_percent, caps_min_length, emotes_en
 
 -- Recent messages (for nuke)
 recent_messages (id, timestamp, channel, user_id, username, message, is_deleted)
+
+-- Quotes
+quotes (id, channel, quote_text, author, added_by, added_at, game, enabled)
+
+-- Giveaways
+giveaways (id, channel, keyword, prize, started_by, started_at, ends_at, status, winner_count, sub_luck_multiplier, sub_only, min_points)
+giveaway_entries (id, giveaway_id, user_id, username, is_subscriber, is_vip, entered_at, tickets)
+giveaway_winners (id, giveaway_id, user_id, username, won_at)
+
+-- Song Requests
+songrequest_settings (channel, enabled, max_queue_size, max_duration_seconds, user_limit, sub_limit, volume)
+song_queue (id, channel, video_id, title, duration_seconds, requested_by, requested_by_id, requested_at, status)
+song_blacklist (id, channel, video_id, reason, added_by)
+song_history (id, channel, video_id, title, requested_by, played_at)
+
+-- Cog Settings
+cog_settings (channel, cog_name, enabled)
 ```
 
 ---
 
-## Phase 2 TODO
+## Phase 3 TODO
 
-### 📝 Quotes System
-- `!addquote <text>` - Add a quote (mod)
-- `!quote [id]` - Get random or specific quote
-- `!delquote <id>` - Delete quote (mod)
-- `!quotes` - List quotes or count
-- Store: quote text, author, added_by, timestamp, game
-
-### 🎉 Giveaway System
-- `!giveaway start <keyword> [duration]` - Start giveaway
-- `!giveaway end` - End and pick winner
-- `!giveaway reroll` - Pick new winner
-- `!giveaway cancel` - Cancel giveaway
-- Features:
-  - Keyword entry
-  - Eligibility (follower, sub, points minimum)
-  - Sub luck multiplier
-  - Multiple winners option
-  - Announce winner
-  - Dashboard management
-
-### 🎵 Song Requests
-- `!sr <youtube url or search>` - Request a song
-- `!queue` - View queue
-- `!skip` - Skip current (mod)
-- `!volume <0-100>` - Set volume (mod)
-- `!currentsong` - Show now playing
-- `!wrongsong` - Remove your last request
-- Features:
-  - YouTube integration
-  - Queue management
-  - User request limits
-  - Duration limits
-  - Blacklist songs/channels
-  - Dashboard player
+### 🎯 Future Ideas
+- Poll system
+- Prediction system
+- Raffle system
+- Shoutout rotation
+- Clip compilation
+- Stream statistics
+- Multi-language support
+- Advanced analytics dashboard
 
 ---
 

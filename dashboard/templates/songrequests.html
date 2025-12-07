@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+
+{% block title %}Song Requests - EngelGuard{% endblock %}
+{% block page_title %}Song Requests{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-info">
+        <p class="header-subtitle">Manage song request queue and settings</p>
+    </div>
+    <div class="header-actions">
+        <button class="btn btn-secondary" onclick="clearQueue()">
+            Clear Queue
+        </button>
+    </div>
+</div>
+
+<!-- Settings Card -->
+<div class="card">
+    <div class="card-header">
+        <h2>Settings</h2>
+        <label class="toggle">
+            <input type="checkbox" id="srEnabled" {% if settings.enabled %}checked{% endif %} onchange="toggleSR(this.checked)">
+            <span class="toggle-slider"></span>
+        </label>
+    </div>
+    <div class="card-body">
+        <form method="POST" id="settingsForm">
+            <input type="hidden" name="action" value="settings">
+            
+            <div class="settings-grid">
+                <div class="form-group">
+                    <label for="max_queue_size">Max Queue Size</label>
+                    <input type="number" id="max_queue_size" name="max_queue_size" 
+                           value="{{ settings.max_queue_size }}" min="1" max="100">
+                </div>
+                
+                <div class="form-group">
+                    <label for="max_duration">Max Duration (seconds)</label>
+                    <input type="number" id="max_duration" name="max_duration_seconds" 
+                           value="{{ settings.max_duration_seconds }}" min="60" max="3600">
+                </div>
+                
+                <div class="form-group">
+                    <label for="user_limit">User Limit</label>
+                    <input type="number" id="user_limit" name="user_limit" 
+                           value="{{ settings.user_limit }}" min="1" max="10">
+                    <span class="form-hint">Max songs per user in queue</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="sub_limit">Subscriber Limit</label>
+                    <input type="number" id="sub_limit" name="sub_limit" 
+                           value="{{ settings.sub_limit }}" min="1" max="20">
+                    <span class="form-hint">Max songs for subscribers</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="volume">Default Volume</label>
+                    <div class="volume-control">
+                        <input type="range" id="volume" name="volume" 
+                               value="{{ settings.volume }}" min="0" max="100"
+                               oninput="document.getElementById('volumeValue').textContent = this.value + '%'">
+                        <span id="volumeValue">{{ settings.volume }}%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Now Playing -->
+{% if current_song %}
+<div class="card card-highlight">
+    <div class="card-header">
+        <h2>🎵 Now Playing</h2>
+    </div>
+    <div class="card-body">
+        <div class="now-playing">
+            <div class="song-info">
+                <span class="song-title">{{ current_song.title }}</span>
+                <span class="song-meta">Requested by {{ current_song.requested_by }}</span>
+            </div>
+            <div class="song-actions">
+                <button class="btn btn-secondary" onclick="skipSong()">⏭️ Skip</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Queue -->
+<div class="card">
+    <div class="card-header">
+        <h2>Queue</h2>
+        <span class="badge badge-secondary">{{ queue|length }} songs</span>
+    </div>
+    <div class="card-body">
+        {% if queue %}
+        <table class="data-table" id="queueTable">
+            <thead>
+                <tr>
+                    <th width="50">#</th>
+                    <th>Title</th>
+                    <th width="120">Requested By</th>
+                    <th width="100">Duration</th>
+                    <th width="140">Added</th>
+                    <th width="100">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for song in queue %}
+                <tr data-id="{{ song.id }}">
+                    <td>{{ loop.index }}</td>
+                    <td>
+                        <a href="https://youtube.com/watch?v={{ song.video_id }}" target="_blank" class="song-link">
+                            {{ song.title }}
+                        </a>
+                    </td>
+                    <td>{{ song.requested_by }}</td>
+                    <td>{{ (song.duration_seconds // 60)|int }}:{{ '%02d'|format(song.duration_seconds % 60) if song.duration_seconds else '--:--' }}</td>
+                    <td>{{ song.requested_at[:16] if song.requested_at else '-' }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn btn-sm btn-secondary" onclick="promoteSong({{ song.id }})" title="Move to front">
+                                ⬆️
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="removeSong({{ song.id }})" title="Remove">
+                                🗑️
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <span class="empty-icon">🎶</span>
+            <h3>Queue is empty</h3>
+            <p>Viewers can request songs using <code>!sr &lt;youtube url&gt;</code> in chat</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Blacklist -->
+<div class="card">
+    <div class="card-header">
+        <h2>Blacklist</h2>
+        <button class="btn btn-sm btn-secondary" onclick="openBlacklistModal()">+ Add</button>
+    </div>
+    <div class="card-body">
+        {% if blacklist %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Video/Channel ID</th>
+                    <th>Reason</th>
+                    <th width="100">Added By</th>
+                    <th width="80">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in blacklist %}
+                <tr>
+                    <td><code>{{ item.video_id or item.channel_id }}</code></td>
+                    <td>{{ item.reason or '-' }}</td>
+                    <td>{{ item.added_by }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="removeBlacklist({{ item.id }})">🗑️</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No blacklisted songs or channels</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Song History -->
+<div class="card">
+    <div class="card-header">
+        <h2>Recent History</h2>
+    </div>
+    <div class="card-body">
+        {% if history %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th width="120">Requested By</th>
+                    <th width="140">Played At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for song in history %}
+                <tr>
+                    <td>
+                        <a href="https://youtube.com/watch?v={{ song.video_id }}" target="_blank" class="song-link">
+                            {{ song.title }}
+                        </a>
+                    </td>
+                    <td>{{ song.requested_by }}</td>
+                    <td>{{ song.played_at[:16] if song.played_at else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No songs played yet</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Blacklist Modal -->
+<div class="modal" id="blacklistModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Add to Blacklist</h2>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <form method="POST" id="blacklistForm">
+            <input type="hidden" name="action" value="blacklist">
+            
+            <div class="form-group">
+                <label for="bl_video_id">Video ID or URL</label>
+                <input type="text" id="bl_video_id" name="video_id" placeholder="dQw4w9WgXcQ or full URL">
+            </div>
+            
+            <div class="form-group">
+                <label for="bl_reason">Reason</label>
+                <input type="text" id="bl_reason" name="reason" placeholder="Why is this blacklisted?">
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add to Blacklist</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+
+.volume-control {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.volume-control input[type="range"] {
+    flex: 1;
+}
+
+.card-highlight {
+    border: 2px solid var(--primary-color);
+    background: linear-gradient(135deg, rgba(145, 70, 255, 0.1) 0%, transparent 100%);
+}
+
+.now-playing {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.song-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.song-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.song-meta {
+    color: var(--text-secondary);
+}
+
+.song-link {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.song-link:hover {
+    text-decoration: underline;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-secondary);
+}
+
+.empty-icon {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+}
+
+.text-muted {
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 1rem;
+}
+</style>
+
+<script>
+function toggleSR(enabled) {
+    fetch('/api/songrequests/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: enabled })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Error: ' + data.error);
+            document.getElementById('srEnabled').checked = !enabled;
+        }
+    });
+}
+
+function skipSong() {
+    fetch('/api/songrequests/skip', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+}
+
+function clearQueue() {
+    if (confirm('Clear the entire queue?')) {
+        fetch('/api/songrequests/clear', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            });
+    }
+}
+
+function promoteSong(id) {
+    fetch(`/api/songrequests/${id}/promote`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+}
+
+function removeSong(id) {
+    fetch(`/api/songrequests/${id}/remove`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.querySelector(`tr[data-id="${id}"]`).remove();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+}
+
+function removeBlacklist(id) {
+    if (confirm('Remove from blacklist?')) {
+        fetch(`/api/songrequests/blacklist/${id}/remove`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            });
+    }
+}
+
+function openBlacklistModal() {
+    document.getElementById('blacklistModal').classList.add('active');
+}
+
+function closeModal() {
+    document.getElementById('blacklistModal').classList.remove('active');
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+});
+
+document.getElementById('blacklistModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+</script>
+{% endblock %}

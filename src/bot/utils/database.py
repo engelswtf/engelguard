@@ -9,6 +9,8 @@ Handles:
 - Timers
 - Strikes/warnings
 - Loyalty points
+- Quotes system
+- Giveaways
 """
 
 from __future__ import annotations
@@ -40,6 +42,8 @@ class DatabaseManager:
     - Timers
     - Strike system
     - Loyalty points
+    - Quotes system
+    - Giveaways
     """
     
     def __init__(self, db_path: str = "/opt/twitch-bot/data/automod.db") -> None:
@@ -271,6 +275,77 @@ class DatabaseManager:
                 )
             """)
             
+            # Cog settings table (for global feature toggles)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cog_settings (
+                    channel TEXT NOT NULL,
+                    cog_name TEXT NOT NULL,
+                    enabled BOOLEAN DEFAULT TRUE,
+                    PRIMARY KEY (channel, cog_name)
+                )
+            """)
+            
+            # Quotes table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS quotes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel TEXT NOT NULL,
+                    quote_text TEXT NOT NULL,
+                    author TEXT,
+                    added_by TEXT NOT NULL,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    game TEXT,
+                    enabled BOOLEAN DEFAULT TRUE
+                )
+            """)
+            
+            # Giveaways table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS giveaways (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel TEXT NOT NULL,
+                    keyword TEXT NOT NULL,
+                    prize TEXT,
+                    started_by TEXT NOT NULL,
+                    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ends_at TIMESTAMP,
+                    status TEXT DEFAULT 'active',
+                    winner_count INTEGER DEFAULT 1,
+                    sub_luck_multiplier REAL DEFAULT 1.0,
+                    follower_only BOOLEAN DEFAULT FALSE,
+                    sub_only BOOLEAN DEFAULT FALSE,
+                    min_points INTEGER DEFAULT 0
+                )
+            """)
+            
+            # Giveaway entries table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS giveaway_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    giveaway_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    is_subscriber BOOLEAN DEFAULT FALSE,
+                    is_vip BOOLEAN DEFAULT FALSE,
+                    entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    tickets INTEGER DEFAULT 1,
+                    UNIQUE(giveaway_id, user_id),
+                    FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Giveaway winners table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS giveaway_winners (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    giveaway_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    won_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
+                )
+            """)
+            
             # Create indexes for performance
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_mod_actions_timestamp 
@@ -303,6 +378,30 @@ class DatabaseManager:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_recent_messages_channel
                 ON recent_messages(channel)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_cog_settings_channel
+                ON cog_settings(channel)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_quotes_channel
+                ON quotes(channel)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_quotes_channel_enabled
+                ON quotes(channel, enabled)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_giveaways_channel_status
+                ON giveaways(channel, status)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_giveaway_entries_giveaway_id
+                ON giveaway_entries(giveaway_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_giveaway_winners_giveaway_id
+                ON giveaway_winners(giveaway_id)
             """)
             
             logger.info("Database tables initialized")
@@ -1199,6 +1298,600 @@ class DatabaseManager:
                  current["length_enabled"], current["length_max_chars"], current["repetition_enabled"],
                  current["repetition_max_words"], current["zalgo_enabled"], current["lookalike_enabled"])
             )
+    
+    # ==================== Quotes Methods ====================
+    
+    def add_quote(
+        self,
+        channel: str,
+        quote_text: str,
+        author: str | None,
+        added_by: str,
+        game: str | None = None
+    ) -> int:
+        """
+        Add a new quote to the database.
+        
+        Args:
+            channel: Channel the quote belongs to
+            quote_text: The quote text
+            author: Who said the quote (optional)
+            added_by: Username of who added the quote
+            game: Game being played when quote was added (optional)
+            
+        Returns:
+            int: The ID of the newly created quote
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO quotes (channel, quote_text, author, added_by, game)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (channel.lower(), quote_text, author, added_by, game)
+            )
+            return cursor.lastrowid or 0
+    
+    def get_quote(self, channel: str, quote_id: int) -> Optional[dict[str, Any]]:
+        """
+        Get a specific quote by ID.
+        
+        Args:
+            channel: Channel to search in
+            quote_id: The quote ID to retrieve
+            
+        Returns:
+            dict | None: Quote data or None if not found
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM quotes 
+                WHERE channel = ? AND id = ? AND enabled = TRUE
+                """,
+                (channel.lower(), quote_id)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def get_random_quote(self, channel: str) -> Optional[dict[str, Any]]:
+        """
+        Get a random quote from the channel.
+        
+        Args:
+            channel: Channel to get quote from
+            
+        Returns:
+            dict | None: Random quote data or None if no quotes exist
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM quotes 
+                WHERE channel = ? AND enabled = TRUE
+                ORDER BY RANDOM()
+                LIMIT 1
+                """,
+                (channel.lower(),)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def delete_quote(self, channel: str, quote_id: int) -> bool:
+        """
+        Delete a quote by ID (soft delete - sets enabled to FALSE).
+        
+        Args:
+            channel: Channel the quote belongs to
+            quote_id: The quote ID to delete
+            
+        Returns:
+            bool: True if quote was deleted, False if not found
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE quotes SET enabled = FALSE
+                WHERE channel = ? AND id = ?
+                """,
+                (channel.lower(), quote_id)
+            )
+            return cursor.rowcount > 0
+    
+    def get_all_quotes(self, channel: str) -> list[dict[str, Any]]:
+        """
+        Get all enabled quotes for a channel.
+        
+        Args:
+            channel: Channel to get quotes from
+            
+        Returns:
+            list[dict]: List of all quotes
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM quotes 
+                WHERE channel = ? AND enabled = TRUE
+                ORDER BY id ASC
+                """,
+                (channel.lower(),)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_quote_count(self, channel: str) -> int:
+        """
+        Get the total number of enabled quotes for a channel.
+        
+        Args:
+            channel: Channel to count quotes for
+            
+        Returns:
+            int: Number of quotes
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) as count FROM quotes 
+                WHERE channel = ? AND enabled = TRUE
+                """,
+                (channel.lower(),)
+            )
+            row = cursor.fetchone()
+            return row["count"] if row else 0
+    
+    def search_quotes(self, channel: str, search_term: str) -> list[dict[str, Any]]:
+        """
+        Search quotes by text content.
+        
+        Args:
+            channel: Channel to search in
+            search_term: Term to search for in quote text
+            
+        Returns:
+            list[dict]: List of matching quotes
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM quotes 
+                WHERE channel = ? AND enabled = TRUE
+                AND (quote_text LIKE ? OR author LIKE ?)
+                ORDER BY id ASC
+                LIMIT 10
+                """,
+                (channel.lower(), f"%{search_term}%", f"%{search_term}%")
+            )
+            return [dict(row) for row in cursor.fetchall()]
+    
+    # ==================== Cog Settings Methods ====================
+    
+    def get_cog_enabled(self, channel: str, cog_name: str) -> bool:
+        """
+        Check if a cog is enabled for a channel.
+        
+        Args:
+            channel: Channel name
+            cog_name: Name of the cog
+            
+        Returns:
+            bool: True if enabled (defaults to True if not set)
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT enabled FROM cog_settings WHERE channel = ? AND cog_name = ?",
+                (channel.lower(), cog_name.lower())
+            )
+            row = cursor.fetchone()
+            
+            # Default to enabled if no setting exists
+            if row is None:
+                return True
+            
+            return bool(row["enabled"])
+    
+    def set_cog_enabled(self, channel: str, cog_name: str, enabled: bool) -> None:
+        """
+        Set whether a cog is enabled for a channel.
+        
+        Args:
+            channel: Channel name
+            cog_name: Name of the cog
+            enabled: Whether the cog should be enabled
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO cog_settings (channel, cog_name, enabled)
+                VALUES (?, ?, ?)
+                ON CONFLICT(channel, cog_name) DO UPDATE SET
+                    enabled = excluded.enabled
+                """,
+                (channel.lower(), cog_name.lower(), enabled)
+            )
+            logger.info(
+                "Cog '%s' %s for channel '%s'",
+                cog_name,
+                "enabled" if enabled else "disabled",
+                channel
+            )
+    
+    def get_all_cog_settings(self, channel: str) -> dict[str, bool]:
+        """
+        Get all cog settings for a channel.
+        
+        Args:
+            channel: Channel name
+            
+        Returns:
+            dict[str, bool]: Dictionary mapping cog names to enabled status
+        """
+        # Define all available cogs with their default enabled state
+        all_cogs = {
+            "admin": True,
+            "fun": True,
+            "moderation": True,
+            "info": True,
+            "clips": True,
+            "automod": True,
+            "customcmds": True,
+            "timers": True,
+            "loyalty": True,
+            "nuke": True,
+            "quotes": True,
+            "giveaways": True,
+            "songrequests": True,
+        }
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT cog_name, enabled FROM cog_settings WHERE channel = ?",
+                (channel.lower(),)
+            )
+            
+            # Update defaults with stored settings
+            for row in cursor.fetchall():
+                cog_name = row["cog_name"].lower()
+                if cog_name in all_cogs:
+                    all_cogs[cog_name] = bool(row["enabled"])
+        
+        return all_cogs
+    
+    # ==================== Giveaway Methods ====================
+    
+    def create_giveaway(
+        self,
+        channel: str,
+        keyword: str,
+        prize: str | None,
+        started_by: str,
+        duration_minutes: int | None = None,
+        winner_count: int = 1,
+        sub_luck: float = 1.0,
+        follower_only: bool = False,
+        sub_only: bool = False,
+        min_points: int = 0
+    ) -> int:
+        """
+        Create a new giveaway.
+        
+        Args:
+            channel: Channel name
+            keyword: Entry keyword (e.g., "!enter")
+            prize: Prize description
+            started_by: Username who started the giveaway
+            duration_minutes: Auto-end duration (None for manual end)
+            winner_count: Number of winners to pick
+            sub_luck: Subscriber luck multiplier (extra tickets)
+            follower_only: Require follower status
+            sub_only: Require subscriber status
+            min_points: Minimum loyalty points required
+            
+        Returns:
+            int: Giveaway ID
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            ends_at = None
+            if duration_minutes:
+                ends_at = (datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)).isoformat()
+            
+            cursor.execute(
+                """
+                INSERT INTO giveaways 
+                (channel, keyword, prize, started_by, ends_at, winner_count, 
+                 sub_luck_multiplier, follower_only, sub_only, min_points)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (channel.lower(), keyword.lower(), prize, started_by, ends_at, 
+                 winner_count, sub_luck, follower_only, sub_only, min_points)
+            )
+            
+            return cursor.lastrowid or 0
+    
+    def get_active_giveaway(self, channel: str) -> Optional[dict[str, Any]]:
+        """
+        Get the active giveaway for a channel.
+        
+        Args:
+            channel: Channel name
+            
+        Returns:
+            dict: Giveaway data or None if no active giveaway
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM giveaways 
+                WHERE channel = ? AND status = 'active'
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (channel.lower(),)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def get_giveaway_by_id(self, giveaway_id: int) -> Optional[dict[str, Any]]:
+        """Get a giveaway by ID."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM giveaways WHERE id = ?", (giveaway_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def add_giveaway_entry(
+        self,
+        giveaway_id: int,
+        user_id: str,
+        username: str,
+        is_sub: bool = False,
+        is_vip: bool = False,
+        tickets: int = 1
+    ) -> bool:
+        """
+        Add an entry to a giveaway.
+        
+        Args:
+            giveaway_id: Giveaway ID
+            user_id: User's Twitch ID
+            username: User's display name
+            is_sub: Whether user is a subscriber
+            is_vip: Whether user is a VIP
+            tickets: Number of tickets (for weighted selection)
+            
+        Returns:
+            bool: True if entry was added, False if already entered
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO giveaway_entries 
+                    (giveaway_id, user_id, username, is_subscriber, is_vip, tickets)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (giveaway_id, user_id, username, is_sub, is_vip, tickets)
+                )
+                return True
+            except sqlite3.IntegrityError:
+                # User already entered
+                return False
+    
+    def get_giveaway_entries(self, giveaway_id: int) -> list[dict[str, Any]]:
+        """
+        Get all entries for a giveaway.
+        
+        Args:
+            giveaway_id: Giveaway ID
+            
+        Returns:
+            list: List of entry dicts
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM giveaway_entries 
+                WHERE giveaway_id = ?
+                ORDER BY entered_at
+                """,
+                (giveaway_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_entry_count(self, giveaway_id: int) -> int:
+        """
+        Get the number of entries for a giveaway.
+        
+        Args:
+            giveaway_id: Giveaway ID
+            
+        Returns:
+            int: Number of entries
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM giveaway_entries WHERE giveaway_id = ?",
+                (giveaway_id,)
+            )
+            row = cursor.fetchone()
+            return row["count"] if row else 0
+    
+    def pick_winner(
+        self,
+        giveaway_id: int,
+        exclude_user_ids: list[str] | None = None
+    ) -> Optional[dict[str, Any]]:
+        """
+        Pick a random winner from giveaway entries (weighted by tickets).
+        
+        Args:
+            giveaway_id: Giveaway ID
+            exclude_user_ids: List of user IDs to exclude (previous winners)
+            
+        Returns:
+            dict: Winner entry data or None if no eligible entries
+        """
+        import random
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get all entries
+            query = "SELECT * FROM giveaway_entries WHERE giveaway_id = ?"
+            params: list[Any] = [giveaway_id]
+            
+            if exclude_user_ids:
+                placeholders = ",".join("?" * len(exclude_user_ids))
+                query += f" AND user_id NOT IN ({placeholders})"
+                params.extend(exclude_user_ids)
+            
+            cursor.execute(query, params)
+            entries = [dict(row) for row in cursor.fetchall()]
+            
+            if not entries:
+                return None
+            
+            # Build weighted list
+            weighted_entries: list[dict[str, Any]] = []
+            for entry in entries:
+                tickets = entry.get("tickets", 1)
+                for _ in range(tickets):
+                    weighted_entries.append(entry)
+            
+            # Pick random winner
+            return random.choice(weighted_entries)
+    
+    def add_giveaway_winner(
+        self,
+        giveaway_id: int,
+        user_id: str,
+        username: str
+    ) -> None:
+        """
+        Record a giveaway winner.
+        
+        Args:
+            giveaway_id: Giveaway ID
+            user_id: Winner's user ID
+            username: Winner's username
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO giveaway_winners (giveaway_id, user_id, username)
+                VALUES (?, ?, ?)
+                """,
+                (giveaway_id, user_id, username)
+            )
+    
+    def get_giveaway_winners(self, giveaway_id: int) -> list[dict[str, Any]]:
+        """Get all winners for a giveaway."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM giveaway_winners 
+                WHERE giveaway_id = ?
+                ORDER BY won_at
+                """,
+                (giveaway_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def end_giveaway(self, giveaway_id: int) -> None:
+        """
+        End a giveaway (mark as ended).
+        
+        Args:
+            giveaway_id: Giveaway ID
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE giveaways SET status = 'ended' WHERE id = ?",
+                (giveaway_id,)
+            )
+    
+    def cancel_giveaway(self, giveaway_id: int) -> None:
+        """
+        Cancel a giveaway without picking winners.
+        
+        Args:
+            giveaway_id: Giveaway ID
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE giveaways SET status = 'cancelled' WHERE id = ?",
+                (giveaway_id,)
+            )
+    
+    def get_giveaway_history(
+        self,
+        channel: str,
+        limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """
+        Get giveaway history for a channel.
+        
+        Args:
+            channel: Channel name
+            limit: Maximum number of giveaways to return
+            
+        Returns:
+            list: List of giveaway dicts
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM giveaways 
+                WHERE channel = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (channel.lower(), limit)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def check_expired_giveaways(self) -> list[dict[str, Any]]:
+        """
+        Get all active giveaways that have expired.
+        
+        Returns:
+            list: List of expired giveaway dicts
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            now = datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                """
+                SELECT * FROM giveaways 
+                WHERE status = 'active' 
+                AND ends_at IS NOT NULL 
+                AND ends_at <= ?
+                """,
+                (now,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
 
 
 # Global database instance

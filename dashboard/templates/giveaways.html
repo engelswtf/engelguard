@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block title %}Giveaways - EngelGuard{% endblock %}
+{% block page_title %}Giveaways{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-info">
+        <p class="header-subtitle">Manage stream giveaways and view history</p>
+    </div>
+    <div class="header-actions">
+        {% if not active_giveaway %}
+        <button class="btn btn-primary" onclick="openStartModal()">
+            + Start Giveaway
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Active Giveaway -->
+{% if active_giveaway %}
+<div class="card card-highlight">
+    <div class="card-header">
+        <h2>🎉 Active Giveaway</h2>
+        <span class="badge badge-success">LIVE</span>
+    </div>
+    <div class="card-body">
+        <div class="giveaway-info">
+            <div class="giveaway-details">
+                <div class="detail-row">
+                    <span class="detail-label">Keyword:</span>
+                    <span class="detail-value"><code>{{ active_giveaway.keyword }}</code></span>
+                </div>
+                {% if active_giveaway.prize %}
+                <div class="detail-row">
+                    <span class="detail-label">Prize:</span>
+                    <span class="detail-value">{{ active_giveaway.prize }}</span>
+                </div>
+                {% endif %}
+                <div class="detail-row">
+                    <span class="detail-label">Started by:</span>
+                    <span class="detail-value">{{ active_giveaway.started_by }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Started at:</span>
+                    <span class="detail-value">{{ active_giveaway.started_at }}</span>
+                </div>
+                {% if active_giveaway.ends_at %}
+                <div class="detail-row">
+                    <span class="detail-label">Ends at:</span>
+                    <span class="detail-value">{{ active_giveaway.ends_at }}</span>
+                </div>
+                {% endif %}
+                <div class="detail-row">
+                    <span class="detail-label">Winners:</span>
+                    <span class="detail-value">{{ active_giveaway.winner_count }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Sub Luck:</span>
+                    <span class="detail-value">{{ active_giveaway.sub_luck_multiplier }}x</span>
+                </div>
+            </div>
+            <div class="giveaway-stats">
+                <div class="big-stat">
+                    <span class="stat-number" id="entryCount">{{ entry_count }}</span>
+                    <span class="stat-label">Entries</span>
+                </div>
+            </div>
+        </div>
+        <div class="giveaway-actions">
+            <button class="btn btn-success" onclick="endGiveaway()">
+                🏆 End & Pick Winner
+            </button>
+            <button class="btn btn-danger" onclick="cancelGiveaway()">
+                ❌ Cancel
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Stats Cards -->
+<div class="stats-row">
+    <div class="stat-card">
+        <span class="stat-value">{{ history|length }}</span>
+        <span class="stat-label">Total Giveaways</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ total_entries }}</span>
+        <span class="stat-label">Total Entries</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ total_winners }}</span>
+        <span class="stat-label">Total Winners</span>
+    </div>
+</div>
+
+<!-- Giveaway History -->
+<div class="card">
+    <div class="card-header">
+        <h2>Giveaway History</h2>
+    </div>
+    <div class="card-body">
+        {% if history %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th width="60">ID</th>
+                    <th>Prize</th>
+                    <th width="100">Keyword</th>
+                    <th width="80">Entries</th>
+                    <th width="150">Winner(s)</th>
+                    <th width="100">Status</th>
+                    <th width="140">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for giveaway in history %}
+                <tr>
+                    <td><span class="badge badge-secondary">#{{ giveaway.id }}</span></td>
+                    <td>{{ giveaway.prize or 'No prize specified' }}</td>
+                    <td><code>{{ giveaway.keyword }}</code></td>
+                    <td>{{ giveaway.entry_count or 0 }}</td>
+                    <td>
+                        {% if giveaway.winners %}
+                            {% for winner in giveaway.winners %}
+                                <span class="badge badge-success">{{ winner }}</span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if giveaway.status == 'ended' %}
+                            <span class="badge badge-success">Ended</span>
+                        {% elif giveaway.status == 'cancelled' %}
+                            <span class="badge badge-danger">Cancelled</span>
+                        {% else %}
+                            <span class="badge badge-warning">{{ giveaway.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ giveaway.started_at[:10] if giveaway.started_at else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <span class="empty-icon">🎁</span>
+            <h3>No giveaways yet</h3>
+            <p>Start your first giveaway using the button above or <code>!giveaway start</code> in chat</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Start Giveaway Modal -->
+<div class="modal" id="startModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Start Giveaway</h2>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <form method="POST" id="giveawayForm">
+            <input type="hidden" name="action" value="start">
+            
+            <div class="form-group">
+                <label for="keyword">Entry Keyword *</label>
+                <input type="text" id="keyword" name="keyword" required 
+                       placeholder="!enter" value="!enter">
+                <span class="form-hint">Users type this to enter the giveaway</span>
+            </div>
+            
+            <div class="form-group">
+                <label for="prize">Prize</label>
+                <input type="text" id="prize" name="prize" placeholder="What are you giving away?">
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="duration">Duration (minutes)</label>
+                    <input type="number" id="duration" name="duration" min="0" max="1440" placeholder="0 = no limit">
+                    <span class="form-hint">Leave empty for manual end</span>
+                </div>
+                <div class="form-group">
+                    <label for="winner_count">Number of Winners</label>
+                    <input type="number" id="winner_count" name="winner_count" min="1" max="10" value="1">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="sub_luck">Sub Luck Multiplier</label>
+                    <input type="number" id="sub_luck" name="sub_luck" min="1" max="10" step="0.5" value="2">
+                    <span class="form-hint">Subscribers get this many extra entries</span>
+                </div>
+                <div class="form-group">
+                    <label for="min_points">Minimum Points</label>
+                    <input type="number" id="min_points" name="min_points" min="0" value="0">
+                    <span class="form-hint">Require loyalty points to enter</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="sub_only">
+                    <span>Subscriber Only</span>
+                </label>
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Start Giveaway</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.card-highlight {
+    border: 2px solid var(--success-color);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, transparent 100%);
+}
+
+.giveaway-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+.giveaway-details {
+    flex: 1;
+}
+
+.detail-row {
+    display: flex;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.detail-label {
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 100px;
+}
+
+.detail-value {
+    color: var(--text-primary);
+}
+
+.giveaway-stats {
+    text-align: center;
+}
+
+.big-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem 2rem;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+}
+
+.stat-number {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.giveaway-actions {
+    display: flex;
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-secondary);
+}
+
+.empty-icon {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.text-muted {
+    color: var(--text-secondary);
+}
+</style>
+
+<script>
+function openStartModal() {
+    document.getElementById('startModal').classList.add('active');
+}
+
+function closeModal() {
+    document.getElementById('startModal').classList.remove('active');
+}
+
+function endGiveaway() {
+    if (confirm('End the giveaway and pick winner(s)?')) {
+        fetch('/api/giveaway/end', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Winner(s): ' + data.winners.join(', '));
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            });
+    }
+}
+
+function cancelGiveaway() {
+    if (confirm('Cancel the giveaway without picking a winner?')) {
+        fetch('/api/giveaway/cancel', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            });
+    }
+}
+
+// Auto-refresh entry count every 5 seconds if giveaway is active
+{% if active_giveaway %}
+setInterval(function() {
+    fetch('/api/giveaway/entries')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('entryCount').textContent = data.count;
+            }
+        });
+}, 5000);
+{% endif %}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+});
+
+document.getElementById('startModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+</script>
+{% endblock %}

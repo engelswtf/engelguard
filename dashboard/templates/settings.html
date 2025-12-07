@@ -20,56 +20,8 @@
                     <span class="form-hint">Character(s) that trigger commands (e.g., !, ?)</span>
                 </div>
                 
-                <div class="form-section">
-                    <h3>Enabled Cogs</h3>
-                    <div class="toggle-group">
-                        <label class="toggle">
-                            <input type="checkbox" name="enable_moderation" 
-                                   {% if settings.enable_moderation %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                            <span class="toggle-label">Moderation Commands</span>
-                        </label>
-                        
-                        <label class="toggle">
-                            <input type="checkbox" name="enable_fun_commands" 
-                                   {% if settings.enable_fun_commands %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                            <span class="toggle-label">Fun Commands</span>
-                        </label>
-                        
-                        <label class="toggle">
-                            <input type="checkbox" name="enable_info_commands" 
-                                   {% if settings.enable_info_commands %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                            <span class="toggle-label">Info Commands</span>
-                        </label>
-                        
-                        <label class="toggle">
-                            <input type="checkbox" name="enable_admin_commands" 
-                                   {% if settings.enable_admin_commands %}checked{% endif %}>
-                            <span class="toggle-slider"></span>
-                            <span class="toggle-label">Admin Commands</span>
-                        </label>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- AutoMod Settings -->
-        <div class="card">
-            <div class="card-header">
-                <h2>AutoMod Settings</h2>
-            </div>
-            <div class="card-body">
-                <label class="toggle">
-                    <input type="checkbox" name="automod_enabled" 
-                           {% if settings.automod_enabled %}checked{% endif %}>
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-label">Enable AutoMod</span>
-                </label>
-                
                 <div class="form-group" style="margin-top: 1.5rem;">
-                    <label>Sensitivity Level</label>
+                    <label>AutoMod Sensitivity Level</label>
                     <div class="sensitivity-slider">
                         <input type="range" id="sensitivity" name="automod_sensitivity_value" 
                                min="1" max="3" 
@@ -117,13 +69,109 @@
     
     <div class="form-actions">
         <button type="submit" class="btn btn-primary">
-            💾 Save Settings
+            Save Settings
         </button>
         <button type="button" class="btn btn-secondary" onclick="restartBot()">
-            🔄 Restart Bot
+            Restart Bot
         </button>
     </div>
 </form>
+
+<!-- Feature Toggles Section -->
+<div class="card" style="margin-top: 2rem;">
+    <div class="card-header">
+        <h2>Feature Toggles</h2>
+        <span class="card-subtitle">Enable or disable bot features for channel: <strong>{{ channel }}</strong></span>
+    </div>
+    <div class="card-body">
+        <p class="form-hint" style="margin-bottom: 1.5rem;">
+            Toggle features on/off instantly. Changes take effect immediately without restarting the bot.
+        </p>
+        
+        <div class="cog-toggles-grid">
+            {% for cog_name, cog_info in cog_settings.items() %}
+            <div class="cog-toggle-item" data-cog="{{ cog_name }}">
+                <div class="cog-info">
+                    <span class="cog-name">{{ cog_info.name }}</span>
+                    <span class="cog-description">{{ cog_info.description }}</span>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" 
+                           id="cog_{{ cog_name }}" 
+                           {% if cog_info.enabled %}checked{% endif %}
+                           onchange="toggleCog('{{ cog_name }}', this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<style>
+.card-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: normal;
+    margin-left: 1rem;
+}
+
+.cog-toggles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1rem;
+}
+
+.cog-toggle-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    transition: border-color 0.2s, background-color 0.2s;
+}
+
+.cog-toggle-item:hover {
+    border-color: var(--primary-color);
+}
+
+.cog-toggle-item.disabled {
+    opacity: 0.6;
+}
+
+.cog-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+    margin-right: 1rem;
+}
+
+.cog-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.cog-description {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.cog-toggle-item .toggle {
+    flex-shrink: 0;
+}
+
+/* Status indicator */
+.cog-toggle-item[data-status="saving"] .toggle-slider {
+    opacity: 0.5;
+}
+
+.cog-toggle-item[data-status="error"] {
+    border-color: var(--danger-color);
+}
+</style>
 
 <script>
 function updateSensitivity(value) {
@@ -142,14 +190,115 @@ function restartBot() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Bot restarted successfully!');
-                    location.reload();
+                    showNotification('Bot restarted successfully!', 'success');
                 } else {
-                    alert('Failed to restart: ' + data.error);
+                    showNotification('Failed to restart: ' + data.error, 'error');
                 }
             })
-            .catch(err => alert('Error: ' + err));
+            .catch(err => showNotification('Error: ' + err, 'error'));
     }
 }
+
+function toggleCog(cogName, enabled) {
+    const item = document.querySelector(`.cog-toggle-item[data-cog="${cogName}"]`);
+    const checkbox = document.getElementById(`cog_${cogName}`);
+    
+    // Set saving state
+    item.setAttribute('data-status', 'saving');
+    checkbox.disabled = true;
+    
+    fetch(`/api/cog/${cogName}/toggle`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled: enabled })
+    })
+    .then(response => response.json())
+    .then(data => {
+        item.removeAttribute('data-status');
+        checkbox.disabled = false;
+        
+        if (data.success) {
+            showNotification(`${cogName} ${enabled ? 'enabled' : 'disabled'}`, 'success');
+            // Update visual state
+            if (enabled) {
+                item.classList.remove('disabled');
+            } else {
+                item.classList.add('disabled');
+            }
+        } else {
+            // Revert checkbox on error
+            checkbox.checked = !enabled;
+            item.setAttribute('data-status', 'error');
+            showNotification('Failed to toggle: ' + data.error, 'error');
+            setTimeout(() => item.removeAttribute('data-status'), 3000);
+        }
+    })
+    .catch(err => {
+        item.removeAttribute('data-status');
+        checkbox.disabled = false;
+        checkbox.checked = !enabled;
+        item.setAttribute('data-status', 'error');
+        showNotification('Error: ' + err, 'error');
+        setTimeout(() => item.removeAttribute('data-status'), 3000);
+    });
+}
+
+function showNotification(message, type) {
+    // Check if notification container exists
+    let container = document.querySelector('.notification-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'notification-container';
+        container.style.cssText = 'position: fixed; top: 1rem; right: 1rem; z-index: 1000;';
+        document.body.appendChild(container);
+    }
+    
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.style.cssText = `
+        padding: 1rem 1.5rem;
+        margin-bottom: 0.5rem;
+        border-radius: 8px;
+        color: white;
+        font-weight: 500;
+        animation: slideIn 0.3s ease;
+        background: ${type === 'success' ? 'var(--success-color, #10b981)' : 'var(--danger-color, #ef4444)'};
+    `;
+    notification.textContent = message;
+    
+    container.appendChild(notification);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// Add animation keyframes
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
+`;
+document.head.appendChild(style);
+
+// Initialize disabled state on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.cog-toggle-item').forEach(item => {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (!checkbox.checked) {
+            item.classList.add('disabled');
+        }
+    });
+});
 </script>
 {% endblock %}

@@ -204,6 +204,77 @@ def get_recent_actions(limit: int = 10) -> list[dict]:
     return actions
 
 
+def get_all_cog_settings(channel: str) -> dict[str, dict]:
+    """
+    Get all cog settings for a channel with display info.
+    
+    Returns a dictionary with cog info including enabled status and display name.
+    """
+    # Define all available cogs with their display names and descriptions
+    cog_info = {
+        "admin": {"name": "Admin Commands", "description": "Bot administration commands (!reload, !shutdown)"},
+        "fun": {"name": "Fun Commands", "description": "Entertainment commands (!dice, !8ball, !hug)"},
+        "moderation": {"name": "Moderation Commands", "description": "Mod tools (!timeout, !ban, !permit)"},
+        "info": {"name": "Info Commands", "description": "Information commands (!uptime, !followage)"},
+        "clips": {"name": "Stream Commands", "description": "Stream-related commands (!clip, !title)"},
+        "automod": {"name": "Auto-Moderation", "description": "Automatic spam detection and filtering"},
+        "customcmds": {"name": "Custom Commands", "description": "User-defined custom commands"},
+        "timers": {"name": "Timers", "description": "Automated timed messages"},
+        "loyalty": {"name": "Loyalty Points", "description": "Channel points and rewards system"},
+        "nuke": {"name": "Nuke Command", "description": "Mass moderation tool for raids"},
+        "quotes": {"name": "Quotes", "description": "Quote storage and retrieval system"},
+        "giveaways": {"name": "Giveaways", "description": "Giveaway and raffle system"},
+        "songrequests": {"name": "Song Requests", "description": "Music request system"},
+    }
+    
+    # Get enabled status from database
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT cog_name, enabled FROM cog_settings WHERE channel = ?",
+            (channel.lower(),)
+        )
+        db_settings = {row["cog_name"].lower(): bool(row["enabled"]) for row in cursor.fetchall()}
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Error getting cog settings: {e}")
+        db_settings = {}
+    
+    # Merge with cog info (default to enabled if not in database)
+    result = {}
+    for cog_name, info in cog_info.items():
+        result[cog_name] = {
+            "name": info["name"],
+            "description": info["description"],
+            "enabled": db_settings.get(cog_name, True)  # Default to enabled
+        }
+    
+    return result
+
+
+def set_cog_enabled(channel: str, cog_name: str, enabled: bool) -> bool:
+    """Set whether a cog is enabled for a channel."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO cog_settings (channel, cog_name, enabled)
+            VALUES (?, ?, ?)
+            ON CONFLICT(channel, cog_name) DO UPDATE SET
+                enabled = excluded.enabled
+            """,
+            (channel.lower(), cog_name.lower(), enabled)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        app.logger.error(f"Error setting cog enabled: {e}")
+        return False
+
+
 # ==================== Routes ====================
 
 @app.route("/")
@@ -573,17 +644,11 @@ def filters_page():
 @login_required
 def settings():
     """Bot settings page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
     if request.method == "POST":
         prefix = request.form.get("prefix", "!")
         set_env_value("BOT_PREFIX", prefix)
-        
-        features = ["ENABLE_MODERATION", "ENABLE_FUN_COMMANDS", "ENABLE_INFO_COMMANDS", "ENABLE_ADMIN_COMMANDS"]
-        for feature in features:
-            value = "true" if request.form.get(feature.lower()) else "false"
-            set_env_value(feature, value)
-        
-        automod_enabled = "true" if request.form.get("automod_enabled") else "false"
-        set_env_value("AUTOMOD_ENABLED", automod_enabled)
         
         sensitivity = request.form.get("automod_sensitivity", "medium")
         set_env_value("AUTOMOD_SENSITIVITY", sensitivity)
@@ -593,13 +658,11 @@ def settings():
     
     current_settings = {
         "prefix": get_env_value("BOT_PREFIX", "!"),
-        "enable_moderation": get_env_value("ENABLE_MODERATION", "true").lower() == "true",
-        "enable_fun_commands": get_env_value("ENABLE_FUN_COMMANDS", "true").lower() == "true",
-        "enable_info_commands": get_env_value("ENABLE_INFO_COMMANDS", "true").lower() == "true",
-        "enable_admin_commands": get_env_value("ENABLE_ADMIN_COMMANDS", "true").lower() == "true",
-        "automod_enabled": get_env_value("AUTOMOD_ENABLED", "true").lower() == "true",
         "automod_sensitivity": get_env_value("AUTOMOD_SENSITIVITY", "medium"),
     }
+    
+    # Get cog settings from database
+    cog_settings = get_all_cog_settings(channel)
     
     whitelisted_users = []
     try:
@@ -611,7 +674,13 @@ def settings():
     except Exception:
         pass
     
-    return render_template("settings.html", settings=current_settings, whitelisted_users=whitelisted_users)
+    return render_template(
+        "settings.html", 
+        settings=current_settings, 
+        whitelisted_users=whitelisted_users,
+        cog_settings=cog_settings,
+        channel=channel
+    )
 
 
 @app.route("/credentials", methods=["GET", "POST"])
@@ -1018,6 +1087,595 @@ def restart_bot():
 def api_bot_status():
     """Get bot status via API."""
     return jsonify(get_bot_status())
+
+
+@app.route("/api/cog/<cog_name>/toggle", methods=["POST"])
+@login_required
+def toggle_cog(cog_name: str):
+    """Toggle cog enabled status for the channel."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        
+        if not channel:
+            return jsonify({"success": False, "error": "No channel configured"}), 400
+        
+        data = request.get_json() or {}
+        enabled = data.get("enabled")
+        
+        # If enabled not specified, toggle current state
+        if enabled is None:
+            cog_settings = get_all_cog_settings(channel)
+            if cog_name not in cog_settings:
+                return jsonify({"success": False, "error": f"Unknown cog: {cog_name}"}), 404
+            enabled = not cog_settings[cog_name]["enabled"]
+        
+        if set_cog_enabled(channel, cog_name, enabled):
+            return jsonify({
+                "success": True,
+                "cog_name": cog_name,
+                "enabled": enabled,
+                "message": f"Cog '{cog_name}' {'enabled' if enabled else 'disabled'}"
+            })
+        else:
+            return jsonify({"success": False, "error": "Failed to update cog setting"}), 500
+            
+    except Exception as e:
+        app.logger.error(f"Error toggling cog: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/cog/settings")
+@login_required
+def get_cog_settings_api():
+    """Get all cog settings for the channel."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        
+        if not channel:
+            return jsonify({"success": False, "error": "No channel configured"}), 400
+        
+        cog_settings = get_all_cog_settings(channel)
+        return jsonify({
+            "success": True,
+            "channel": channel,
+            "cogs": cog_settings
+        })
+    except Exception as e:
+        app.logger.error(f"Error getting cog settings: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ==================== Quotes Routes ====================
+
+@app.route("/quotes", methods=["GET", "POST"])
+@login_required
+def quotes_page():
+    """Quotes management page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    if request.method == "POST":
+        action = request.form.get("action")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if action == "add":
+            cursor.execute("""
+                INSERT INTO quotes (channel, quote_text, author, added_by, game)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                channel,
+                request.form.get("quote_text"),
+                request.form.get("author") or "Unknown",
+                "dashboard",
+                request.form.get("game")
+            ))
+            conn.commit()
+            flash("Quote added!", "success")
+        
+        elif action == "edit":
+            quote_id = request.form.get("quote_id")
+            cursor.execute("""
+                UPDATE quotes SET quote_text = ?, author = ?, game = ?
+                WHERE id = ? AND channel = ?
+            """, (
+                request.form.get("quote_text"),
+                request.form.get("author") or "Unknown",
+                request.form.get("game"),
+                quote_id,
+                channel
+            ))
+            conn.commit()
+            flash("Quote updated!", "success")
+        
+        conn.close()
+        return redirect(url_for("quotes_page"))
+    
+    # Get all quotes
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM quotes WHERE channel = ? AND enabled = 1 ORDER BY id DESC
+    """, (channel,))
+    quotes = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    
+    return render_template("quotes.html", quotes=quotes)
+
+
+@app.route("/api/quote/<int:quote_id>")
+@login_required
+def get_quote(quote_id: int):
+    """Get quote details."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM quotes WHERE id = ? AND channel = ?", (quote_id, channel))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return jsonify({"success": True, "quote": dict(row)})
+        return jsonify({"success": False, "error": "Not found"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/quote/<int:quote_id>/delete", methods=["POST"])
+@login_required
+def delete_quote(quote_id: int):
+    """Delete a quote (soft delete)."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE quotes SET enabled = 0 WHERE id = ? AND channel = ?", (quote_id, channel))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ==================== Giveaways Routes ====================
+
+@app.route("/giveaways", methods=["GET", "POST"])
+@login_required
+def giveaways_page():
+    """Giveaways management page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    if request.method == "POST":
+        action = request.form.get("action")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if action == "start":
+            # Check for active giveaway
+            cursor.execute("SELECT id FROM giveaways WHERE channel = ? AND status = 'active'", (channel,))
+            if cursor.fetchone():
+                flash("A giveaway is already active!", "error")
+            else:
+                duration = request.form.get("duration")
+                ends_at = None
+                if duration and int(duration) > 0:
+                    from datetime import datetime, timedelta
+                    ends_at = (datetime.now() + timedelta(minutes=int(duration))).isoformat()
+                
+                cursor.execute("""
+                    INSERT INTO giveaways (channel, keyword, prize, started_by, ends_at, winner_count, sub_luck_multiplier, sub_only, min_points)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    channel,
+                    request.form.get("keyword", "!enter"),
+                    request.form.get("prize"),
+                    "dashboard",
+                    ends_at,
+                    int(request.form.get("winner_count", 1)),
+                    float(request.form.get("sub_luck", 2)),
+                    request.form.get("sub_only") == "on",
+                    int(request.form.get("min_points", 0))
+                ))
+                conn.commit()
+                flash("Giveaway started!", "success")
+        
+        conn.close()
+        return redirect(url_for("giveaways_page"))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get active giveaway
+    cursor.execute("SELECT * FROM giveaways WHERE channel = ? AND status = 'active'", (channel,))
+    active_row = cursor.fetchone()
+    active_giveaway = dict(active_row) if active_row else None
+    
+    entry_count = 0
+    if active_giveaway:
+        cursor.execute("SELECT COUNT(*) as count FROM giveaway_entries WHERE giveaway_id = ?", (active_giveaway["id"],))
+        entry_count = cursor.fetchone()["count"]
+    
+    # Get history
+    cursor.execute("""
+        SELECT g.*, 
+               (SELECT COUNT(*) FROM giveaway_entries WHERE giveaway_id = g.id) as entry_count
+        FROM giveaways g 
+        WHERE g.channel = ? AND g.status != 'active'
+        ORDER BY g.started_at DESC LIMIT 50
+    """, (channel,))
+    history = []
+    for row in cursor.fetchall():
+        giveaway = dict(row)
+        # Get winners
+        cursor.execute("SELECT username FROM giveaway_winners WHERE giveaway_id = ?", (giveaway["id"],))
+        giveaway["winners"] = [w["username"] for w in cursor.fetchall()]
+        history.append(giveaway)
+    
+    # Get totals
+    cursor.execute("SELECT COUNT(*) as count FROM giveaway_entries WHERE giveaway_id IN (SELECT id FROM giveaways WHERE channel = ?)", (channel,))
+    total_entries = cursor.fetchone()["count"]
+    
+    cursor.execute("SELECT COUNT(*) as count FROM giveaway_winners WHERE giveaway_id IN (SELECT id FROM giveaways WHERE channel = ?)", (channel,))
+    total_winners = cursor.fetchone()["count"]
+    
+    conn.close()
+    
+    return render_template("giveaways.html", 
+                          active_giveaway=active_giveaway,
+                          entry_count=entry_count,
+                          history=history,
+                          total_entries=total_entries,
+                          total_winners=total_winners)
+
+
+@app.route("/api/giveaway/end", methods=["POST"])
+@login_required
+def end_giveaway():
+    """End giveaway and pick winner(s)."""
+    try:
+        import random
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM giveaways WHERE channel = ? AND status = 'active'", (channel,))
+        giveaway = cursor.fetchone()
+        
+        if not giveaway:
+            return jsonify({"success": False, "error": "No active giveaway"}), 404
+        
+        giveaway = dict(giveaway)
+        
+        # Get entries with tickets
+        cursor.execute("SELECT * FROM giveaway_entries WHERE giveaway_id = ?", (giveaway["id"],))
+        entries = [dict(row) for row in cursor.fetchall()]
+        
+        if not entries:
+            cursor.execute("UPDATE giveaways SET status = 'ended' WHERE id = ?", (giveaway["id"],))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "winners": [], "message": "No entries"})
+        
+        # Build weighted pool
+        pool = []
+        for entry in entries:
+            pool.extend([entry] * entry.get("tickets", 1))
+        
+        # Pick winners
+        winners = []
+        winner_count = giveaway.get("winner_count", 1)
+        picked_ids = set()
+        
+        for _ in range(min(winner_count, len(entries))):
+            available = [e for e in pool if e["user_id"] not in picked_ids]
+            if not available:
+                break
+            winner = random.choice(available)
+            winners.append(winner["username"])
+            picked_ids.add(winner["user_id"])
+            
+            cursor.execute("""
+                INSERT INTO giveaway_winners (giveaway_id, user_id, username)
+                VALUES (?, ?, ?)
+            """, (giveaway["id"], winner["user_id"], winner["username"]))
+        
+        cursor.execute("UPDATE giveaways SET status = 'ended' WHERE id = ?", (giveaway["id"],))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"success": True, "winners": winners})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/giveaway/cancel", methods=["POST"])
+@login_required
+def cancel_giveaway():
+    """Cancel active giveaway."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE giveaways SET status = 'cancelled' WHERE channel = ? AND status = 'active'", (channel,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/giveaway/entries")
+@login_required
+def get_giveaway_entries():
+    """Get entry count for active giveaway."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM giveaway_entries 
+            WHERE giveaway_id = (SELECT id FROM giveaways WHERE channel = ? AND status = 'active')
+        """, (channel,))
+        row = cursor.fetchone()
+        conn.close()
+        return jsonify({"success": True, "count": row["count"] if row else 0})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ==================== Song Requests Routes ====================
+
+@app.route("/songrequests", methods=["GET", "POST"])
+@login_required
+def songrequests_page():
+    """Song requests management page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Ensure tables exist
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS songrequest_settings (
+            channel TEXT PRIMARY KEY,
+            enabled BOOLEAN DEFAULT FALSE,
+            max_queue_size INTEGER DEFAULT 50,
+            max_duration_seconds INTEGER DEFAULT 600,
+            user_limit INTEGER DEFAULT 3,
+            sub_limit INTEGER DEFAULT 5,
+            volume INTEGER DEFAULT 50
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS song_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL,
+            video_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            duration_seconds INTEGER,
+            requested_by TEXT NOT NULL,
+            requested_by_id TEXT NOT NULL,
+            requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'queued'
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS song_blacklist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL,
+            video_id TEXT,
+            reason TEXT,
+            added_by TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS song_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL,
+            video_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    
+    if request.method == "POST":
+        action = request.form.get("action")
+        
+        if action == "settings":
+            cursor.execute("""
+                INSERT INTO songrequest_settings (channel, enabled, max_queue_size, max_duration_seconds, user_limit, sub_limit, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(channel) DO UPDATE SET
+                    max_queue_size = excluded.max_queue_size,
+                    max_duration_seconds = excluded.max_duration_seconds,
+                    user_limit = excluded.user_limit,
+                    sub_limit = excluded.sub_limit,
+                    volume = excluded.volume
+            """, (
+                channel,
+                True,  # Keep current enabled state
+                int(request.form.get("max_queue_size", 50)),
+                int(request.form.get("max_duration_seconds", 600)),
+                int(request.form.get("user_limit", 3)),
+                int(request.form.get("sub_limit", 5)),
+                int(request.form.get("volume", 50))
+            ))
+            conn.commit()
+            flash("Settings saved!", "success")
+        
+        elif action == "blacklist":
+            video_id = request.form.get("video_id", "").strip()
+            # Extract video ID from URL if needed
+            import re
+            match = re.search(r'(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})', video_id)
+            if match:
+                video_id = match.group(1)
+            
+            cursor.execute("""
+                INSERT INTO song_blacklist (channel, video_id, reason, added_by)
+                VALUES (?, ?, ?, ?)
+            """, (channel, video_id, request.form.get("reason"), "dashboard"))
+            conn.commit()
+            flash("Added to blacklist!", "success")
+        
+        conn.close()
+        return redirect(url_for("songrequests_page"))
+    
+    # Get settings
+    cursor.execute("SELECT * FROM songrequest_settings WHERE channel = ?", (channel,))
+    row = cursor.fetchone()
+    settings = dict(row) if row else {
+        "enabled": False,
+        "max_queue_size": 50,
+        "max_duration_seconds": 600,
+        "user_limit": 3,
+        "sub_limit": 5,
+        "volume": 50
+    }
+    
+    # Get current song
+    cursor.execute("SELECT * FROM song_queue WHERE channel = ? AND status = 'playing'", (channel,))
+    current_row = cursor.fetchone()
+    current_song = dict(current_row) if current_row else None
+    
+    # Get queue
+    cursor.execute("SELECT * FROM song_queue WHERE channel = ? AND status = 'queued' ORDER BY id", (channel,))
+    queue = [dict(row) for row in cursor.fetchall()]
+    
+    # Get blacklist
+    cursor.execute("SELECT * FROM song_blacklist WHERE channel = ?", (channel,))
+    blacklist = [dict(row) for row in cursor.fetchall()]
+    
+    # Get history
+    cursor.execute("SELECT * FROM song_history WHERE channel = ? ORDER BY played_at DESC LIMIT 20", (channel,))
+    history = [dict(row) for row in cursor.fetchall()]
+    
+    conn.close()
+    
+    return render_template("songrequests.html",
+                          settings=settings,
+                          current_song=current_song,
+                          queue=queue,
+                          blacklist=blacklist,
+                          history=history)
+
+
+@app.route("/api/songrequests/toggle", methods=["POST"])
+@login_required
+def toggle_songrequests():
+    """Toggle song requests enabled state."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        data = request.get_json() or {}
+        enabled = data.get("enabled", False)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO songrequest_settings (channel, enabled)
+            VALUES (?, ?)
+            ON CONFLICT(channel) DO UPDATE SET enabled = excluded.enabled
+        """, (channel, enabled))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/songrequests/skip", methods=["POST"])
+@login_required
+def skip_song():
+    """Skip current song."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Mark current as skipped
+        cursor.execute("UPDATE song_queue SET status = 'skipped' WHERE channel = ? AND status = 'playing'", (channel,))
+        
+        # Get next song and mark as playing
+        cursor.execute("SELECT id FROM song_queue WHERE channel = ? AND status = 'queued' ORDER BY id LIMIT 1", (channel,))
+        next_song = cursor.fetchone()
+        if next_song:
+            cursor.execute("UPDATE song_queue SET status = 'playing' WHERE id = ?", (next_song["id"],))
+        
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/songrequests/clear", methods=["POST"])
+@login_required
+def clear_song_queue():
+    """Clear the song queue."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM song_queue WHERE channel = ? AND status = 'queued'", (channel,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/songrequests/<int:song_id>/remove", methods=["POST"])
+@login_required
+def remove_song(song_id: int):
+    """Remove a song from queue."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM song_queue WHERE id = ?", (song_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/songrequests/<int:song_id>/promote", methods=["POST"])
+@login_required
+def promote_song(song_id: int):
+    """Move a song to the front of the queue."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get the minimum ID in queue
+        cursor.execute("SELECT MIN(id) as min_id FROM song_queue WHERE status = 'queued'")
+        row = cursor.fetchone()
+        if row and row["min_id"]:
+            # Update the song's ID to be before the minimum (hacky but works)
+            cursor.execute("UPDATE song_queue SET requested_at = datetime('now', '-1 hour') WHERE id = ?", (song_id,))
+        
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/songrequests/blacklist/<int:item_id>/remove", methods=["POST"])
+@login_required
+def remove_blacklist(item_id: int):
+    """Remove item from blacklist."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM song_blacklist WHERE id = ?", (item_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":

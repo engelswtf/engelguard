@@ -49,6 +49,18 @@
                     <span class="nav-icon">⭐</span>
                     <span class="nav-text">Loyalty</span>
                 </a>
+                <a href="{{ url_for('quotes_page') }}" class="nav-item {% if request.endpoint == 'quotes_page' %}active{% endif %}">
+                    <span class="nav-icon">📝</span>
+                    <span class="nav-text">Quotes</span>
+                </a>
+                <a href="{{ url_for('giveaways_page') }}" class="nav-item {% if request.endpoint == 'giveaways_page' %}active{% endif %}">
+                    <span class="nav-icon">🎁</span>
+                    <span class="nav-text">Giveaways</span>
+                </a>
+                <a href="{{ url_for('songrequests_page') }}" class="nav-item {% if request.endpoint == 'songrequests_page' %}active{% endif %}">
+                    <span class="nav-icon">🎵</span>
+                    <span class="nav-text">Song Requests</span>
+                </a>
                 <a href="{{ url_for('modlog') }}" class="nav-item {% if request.endpoint == 'modlog' %}active{% endif %}">
                     <span class="nav-icon">📋</span>
                     <span class="nav-text">Mod Log</span>

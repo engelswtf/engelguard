@@ -6,6 +6,7 @@ Provides decorators for:
 - Moderator-only commands
 - Subscriber-only commands
 - Cooldown management
+- Cog enabled checks
 """
 
 from __future__ import annotations
@@ -328,3 +329,46 @@ def reset_cooldown(
         bucket: Cooldown bucket type
     """
     _cooldown_manager.reset_cooldown(command_name, ctx, bucket)
+
+
+def cog_enabled(cog_name: str) -> Callable[[F], F]:
+    """
+    Decorator that checks if a cog is enabled for the channel.
+
+    Commands decorated with this will silently fail if the cog
+    is disabled for the channel where the command is invoked.
+
+    Args:
+        cog_name: Name of the cog to check (e.g., "fun", "moderation")
+
+    Usage:
+        @commands.command()
+        @cog_enabled("fun")
+        async def dice(self, ctx):
+            ...
+    """
+
+    def decorator(func: F) -> F:
+        @wraps(func)
+        async def wrapper(self: Any, ctx: Context, *args: Any, **kwargs: Any) -> Any:
+            # Import here to avoid circular imports
+            from bot.utils.database import get_database
+
+            db = get_database()
+            channel_name = ctx.channel.name
+
+            if not db.get_cog_enabled(channel_name, cog_name):
+                logger.debug(
+                    "Cog '%s' is disabled for channel '%s', ignoring command '%s'",
+                    cog_name,
+                    channel_name,
+                    func.__name__,
+                )
+                return None  # Silently ignore if cog is disabled
+
+            return await func(self, ctx, *args, **kwargs)
+
+        wrapper._cog_name = cog_name  # type: ignore[attr-defined]
+        return wrapper  # type: ignore[return-value]
+
+    return decorator

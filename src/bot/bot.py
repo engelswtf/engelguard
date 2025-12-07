@@ -87,6 +87,9 @@ class TwitchBot(commands.Bot):
             ("bot.cogs.timers", True),  # Timers always enabled
             ("bot.cogs.loyalty", True),  # Loyalty always enabled (but toggleable per channel)
             ("bot.cogs.nuke", True),  # Nuke command always enabled
+            ("bot.cogs.quotes", True),  # Quotes always enabled
+            ("bot.cogs.songrequests", True),  # Song requests always enabled (but toggleable per channel)
+            ("bot.cogs.giveaways", True),  # Giveaways always enabled (but toggleable per channel)
         ]
 
         for cog_path, enabled in cogs_to_load:
