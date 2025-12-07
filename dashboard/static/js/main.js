@@ -35,67 +35,132 @@ function initSidebar() {
 }
 
 /**
- * Bot status polling
+ * Bot status with efficient uptime tracking
+ * - Fetches from API once, then increments locally every second
+ * - Re-syncs with server every 60 seconds
  */
-function initBotStatus() {
-    const statusElement = document.getElementById('botStatus');
-    if (!statusElement) return;
+
+// Global uptime tracking
+let botUptimeSeconds = 0;
+let botIsRunning = false;
+
+function parseUptimeToSeconds(uptimeStr) {
+    // Parse "1d 2h 30m" or "2h 30m 45s" to total seconds
+    let seconds = 0;
+    const days = uptimeStr.match(/(\d+)d/);
+    const hours = uptimeStr.match(/(\d+)h/);
+    const minutes = uptimeStr.match(/(\d+)m/);
+    const secs = uptimeStr.match(/(\d+)s/);
     
-    function updateStatus() {
-        fetch('/api/bot/status')
-            .then(response => response.json())
-            .then(data => {
-                const dot = statusElement.querySelector('.status-dot');
+    if (days) seconds += parseInt(days[1]) * 86400;
+    if (hours) seconds += parseInt(hours[1]) * 3600;
+    if (minutes) seconds += parseInt(minutes[1]) * 60;
+    if (secs) seconds += parseInt(secs[1]);
+    
+    return seconds;
+}
+
+function formatSecondsToUptime(totalSeconds) {
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    
+    if (days > 0) {
+        return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    }
+    return `${hours}h ${minutes}m ${seconds}s`;
+}
+
+function updateUptimeDisplay() {
+    if (!botIsRunning) return;
+    
+    const uptimeStr = formatSecondsToUptime(botUptimeSeconds);
+    
+    // Update top bar uptime
+    const uptimeTopBar = document.getElementById('botUptimeTopBar');
+    if (uptimeTopBar) {
+        uptimeTopBar.textContent = '• ' + uptimeStr;
+    }
+    
+    // Update dashboard uptime
+    const uptimeDashboard = document.getElementById('botUptime');
+    if (uptimeDashboard) {
+        uptimeDashboard.textContent = uptimeStr;
+    }
+}
+
+function fetchBotStatus() {
+    const statusElement = document.getElementById('botStatus');
+    
+    fetch('/api/bot/status')
+        .then(response => response.json())
+        .then(data => {
+            botIsRunning = data.is_running;
+            
+            // Update status element
+            if (statusElement) {
                 const text = statusElement.querySelector('.status-text');
-                
                 if (data.is_running) {
                     statusElement.classList.add('online');
                     statusElement.classList.remove('offline');
-                    text.textContent = 'Online';
+                    if (text) text.textContent = 'Online';
                 } else {
                     statusElement.classList.remove('online');
                     statusElement.classList.add('offline');
-                    text.textContent = 'Offline';
+                    if (text) text.textContent = 'Offline';
                 }
-                
-                // Update uptime in top bar
+            }
+            
+            // Update dashboard status indicator
+            const statusIndicator = document.querySelector('.status-indicator');
+            if (statusIndicator) {
+                if (data.is_running) {
+                    statusIndicator.classList.add('online');
+                    statusIndicator.classList.remove('offline');
+                } else {
+                    statusIndicator.classList.remove('online');
+                    statusIndicator.classList.add('offline');
+                }
+                const statusLabel = statusIndicator.querySelector('.status-label');
+                if (statusLabel) {
+                    statusLabel.textContent = data.status;
+                }
+            }
+            
+            // Sync uptime from server
+            if (data.uptime && data.uptime !== 'Unknown' && data.is_running) {
+                botUptimeSeconds = parseUptimeToSeconds(data.uptime);
+            } else if (!data.is_running) {
+                botUptimeSeconds = 0;
+                // Clear uptime displays when offline
                 const uptimeTopBar = document.getElementById('botUptimeTopBar');
-                if (uptimeTopBar && data.uptime) {
-                    uptimeTopBar.textContent = data.is_running ? '• ' + data.uptime : '';
-                }
-                
-                // Update uptime in dashboard status card (if on dashboard page)
+                if (uptimeTopBar) uptimeTopBar.textContent = '';
                 const uptimeDashboard = document.getElementById('botUptime');
-                if (uptimeDashboard && data.uptime) {
-                    uptimeDashboard.textContent = data.uptime;
-                }
-                
-                // Also update the dashboard status indicator if present
-                const statusIndicator = document.querySelector('.status-indicator');
-                if (statusIndicator) {
-                    if (data.is_running) {
-                        statusIndicator.classList.add('online');
-                        statusIndicator.classList.remove('offline');
-                    } else {
-                        statusIndicator.classList.remove('online');
-                        statusIndicator.classList.add('offline');
-                    }
-                    const statusLabel = statusIndicator.querySelector('.status-label');
-                    if (statusLabel) {
-                        statusLabel.textContent = data.status;
-                    }
-                }
-            })
-            .catch(err => {
-                console.error('Failed to fetch bot status:', err);
-            });
-    }
+                if (uptimeDashboard) uptimeDashboard.textContent = 'Offline';
+            }
+            
+            updateUptimeDisplay();
+        })
+        .catch(err => {
+            console.error('Failed to fetch bot status:', err);
+        });
+}
+
+function initBotStatus() {
+    // Initial fetch from server
+    fetchBotStatus();
     
-    // Initial update
-    updateStatus();
+    // Increment uptime locally every second (efficient - no API calls)
+    setInterval(() => {
+        if (botIsRunning) {
+            botUptimeSeconds++;
+            updateUptimeDisplay();
+        }
+    }, 1000);
     
-    // Poll every 30 seconds
-    setInterval(updateStatus, 30000);
+    // Re-sync with server every 60 seconds to stay accurate
+    setInterval(fetchBotStatus, 60000);
 }
 
 /**
