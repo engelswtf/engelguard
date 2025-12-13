@@ -49,8 +49,9 @@
     --transition-normal: 250ms ease;
     
     /* Sidebar */
-    --sidebar-width: 250px;
-    --sidebar-collapsed: 70px;
+    --sidebar-width: 220px;
+    --sidebar-collapsed: 60px;
+    --sidebar-transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ==========================================
@@ -103,13 +104,21 @@ a:hover {
     min-height: 100vh;
     background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
 }
+/* ==========================================
+   RESPONSIVE SIDEBAR SYSTEM
+   Desktop (>1024px): Full sidebar with icons + text (~220px)
+   Tablet (768px-1024px): Collapsed sidebar with icons only (~60px), hover to expand
+   Mobile (<768px): Hidden sidebar with hamburger menu toggle
+   Added: 2025-12-13
+   ========================================== */
 
 /* ==========================================
-   Sidebar
+   Base Sidebar Styles (Desktop Default)
    ========================================== */
 
 .sidebar {
     width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
     background-color: var(--bg-secondary);
     border-right: 1px solid var(--border);
     display: flex;
@@ -117,33 +126,45 @@ a:hover {
     position: fixed;
     height: 100vh;
     z-index: 100;
-    transition: width var(--transition-normal);
+    transition: width var(--sidebar-transition), min-width var(--sidebar-transition), transform var(--sidebar-transition);
+    overflow: hidden;
 }
 
+/* Sidebar Header */
 .sidebar-header {
     padding: var(--spacing-lg);
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    min-height: 65px;
+    flex-shrink: 0;
+    transition: padding var(--sidebar-transition), justify-content var(--sidebar-transition);
 }
 
 .logo {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .logo-icon {
     font-size: 1.5rem;
+    flex-shrink: 0;
 }
 
 .logo-text {
     font-size: 1.25rem;
     font-weight: 700;
     color: var(--text-primary);
+    opacity: 1;
+    transition: opacity var(--sidebar-transition), width var(--sidebar-transition);
+    overflow: hidden;
 }
 
+/* Sidebar Toggle Button */
 .sidebar-toggle {
     display: none;
     background: none;
@@ -151,16 +172,46 @@ a:hover {
     color: var(--text-secondary);
     cursor: pointer;
     padding: var(--spacing-sm);
+    font-size: 1.25rem;
+    transition: color var(--transition-fast);
+    flex-shrink: 0;
 }
 
+.sidebar-toggle:hover {
+    color: var(--text-primary);
+}
+
+/* Sidebar Navigation */
 .sidebar-nav {
     flex: 1;
     padding: var(--spacing-md);
     display: flex;
     flex-direction: column;
     gap: var(--spacing-xs);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-light) transparent;
 }
 
+.sidebar-nav::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+    background-color: var(--border-light);
+    border-radius: 3px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-muted);
+}
+
+/* Nav Items */
 .nav-item {
     display: flex;
     align-items: center;
@@ -169,6 +220,9 @@ a:hover {
     border-radius: var(--radius-md);
     color: var(--text-secondary);
     transition: all var(--transition-fast);
+    white-space: nowrap;
+    overflow: hidden;
+    min-height: 44px;
 }
 
 .nav-item:hover {
@@ -184,12 +238,30 @@ a:hover {
 .nav-icon {
     font-size: 1.25rem;
     width: 24px;
+    min-width: 24px;
     text-align: center;
+    flex-shrink: 0;
 }
 
+.nav-text {
+    opacity: 1;
+    transition: opacity var(--sidebar-transition);
+    overflow: hidden;
+}
+
+/* Nav Divider */
+.nav-divider {
+    height: 1px;
+    background: var(--border);
+    margin: var(--spacing-sm) var(--spacing-md);
+    transition: margin var(--sidebar-transition);
+}
+
+/* Sidebar Footer */
 .sidebar-footer {
     padding: var(--spacing-md);
     border-top: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
 .nav-item.logout:hover {
@@ -207,6 +279,9 @@ a:hover {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+    transition: margin-left var(--sidebar-transition);
 }
 
 .top-bar {
@@ -219,8 +294,10 @@ a:hover {
     position: sticky;
     top: 0;
     z-index: 50;
+    flex-shrink: 0;
 }
 
+/* Mobile Menu Button - Hidden on desktop */
 .mobile-menu-btn {
     display: none;
     background: none;
@@ -280,7 +357,273 @@ a:hover {
 .content {
     flex: 1;
     padding: var(--spacing-xl);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-light) var(--bg-primary);
 }
+
+.content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.content::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+.content::-webkit-scrollbar-thumb {
+    background-color: var(--border-light);
+    border-radius: 4px;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-muted);
+}
+
+/* Sidebar Overlay */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    opacity: 0;
+    transition: opacity var(--sidebar-transition);
+}
+
+.sidebar-overlay.active {
+    display: block;
+    opacity: 1;
+}
+
+/* ==========================================
+   TABLET BREAKPOINT (768px - 1024px)
+   Collapsed sidebar with icons only, hover to expand
+   ========================================== */
+
+@media (min-width: 768px) and (max-width: 1024px) {
+    /* Collapsed sidebar by default */
+    .sidebar {
+        width: var(--sidebar-collapsed);
+        min-width: var(--sidebar-collapsed);
+    }
+    
+    /* Expand on hover */
+    .sidebar:hover {
+        width: var(--sidebar-width);
+        min-width: var(--sidebar-width);
+        box-shadow: var(--shadow-lg);
+    }
+    
+    /* Hide text when collapsed */
+    .sidebar .logo-text,
+    .sidebar .nav-text {
+        opacity: 0;
+        width: 0;
+    }
+    
+    /* Show text on hover */
+    .sidebar:hover .logo-text,
+    .sidebar:hover .nav-text {
+        opacity: 1;
+        width: auto;
+    }
+    
+    /* Adjust header padding when collapsed */
+    .sidebar .sidebar-header {
+        padding: var(--spacing-md);
+        justify-content: center;
+    }
+    
+    .sidebar:hover .sidebar-header {
+        padding: var(--spacing-lg);
+        justify-content: space-between;
+    }
+    
+    /* Center nav items when collapsed */
+    .sidebar .nav-item {
+        justify-content: center;
+        padding: var(--spacing-md);
+    }
+    
+    .sidebar:hover .nav-item {
+        justify-content: flex-start;
+    }
+    
+    /* Adjust main content margin */
+    .main-content {
+        margin-left: var(--sidebar-collapsed);
+    }
+    
+    /* Nav divider adjustments */
+    .sidebar .nav-divider {
+        margin: var(--spacing-sm) var(--spacing-xs);
+    }
+    
+    .sidebar:hover .nav-divider {
+        margin: var(--spacing-sm) var(--spacing-md);
+    }
+    
+    /* Tooltip for nav items when collapsed */
+    .sidebar .nav-item {
+        position: relative;
+    }
+    
+    .sidebar .nav-item::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        left: calc(100% + 10px);
+        top: 50%;
+        transform: translateY(-50%);
+        background-color: var(--bg-tertiary);
+        color: var(--text-primary);
+        padding: var(--spacing-sm) var(--spacing-md);
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--transition-fast);
+        z-index: 1000;
+        box-shadow: var(--shadow-md);
+    }
+    
+    .sidebar:not(:hover) .nav-item:hover::after {
+        opacity: 1;
+    }
+    
+    .sidebar:hover .nav-item::after {
+        opacity: 0;
+    }
+}
+
+/* ==========================================
+   MOBILE BREAKPOINT (<768px)
+   Hidden sidebar with hamburger menu toggle
+   ========================================== */
+
+@media (max-width: 767px) {
+    /* Hide sidebar off-screen */
+    .sidebar {
+        transform: translateX(-100%);
+        width: var(--sidebar-width);
+        min-width: var(--sidebar-width);
+        box-shadow: none;
+    }
+    
+    /* Show sidebar when open */
+    .sidebar.open {
+        transform: translateX(0);
+        box-shadow: var(--shadow-lg);
+    }
+    
+    /* Ensure text is visible when open */
+    .sidebar.open .logo-text,
+    .sidebar.open .nav-text {
+        opacity: 1;
+        width: auto;
+    }
+    
+    /* Main content takes full width */
+    .main-content {
+        margin-left: 0;
+    }
+    
+    /* Show mobile menu button */
+    .mobile-menu-btn {
+        display: block;
+    }
+    
+    /* Adjust content padding */
+    .content {
+        padding: var(--spacing-md);
+    }
+    
+    /* Responsive adjustments for dashboard */
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .filters-form {
+        flex-direction: column;
+    }
+    
+    .filter-group {
+        width: 100%;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+    }
+    
+    .form-actions .btn {
+        width: 100%;
+    }
+    
+    .status-display {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .action-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+    }
+    
+    .action-details {
+        align-items: flex-start;
+    }
+    
+    /* Top bar adjustments */
+    .top-bar {
+        padding: var(--spacing-md);
+    }
+    
+    .page-title {
+        font-size: 1.25rem;
+    }
+}
+
+/* Very small screens */
+@media (max-width: 480px) {
+    .bot-status .status-text {
+        display: none;
+    }
+    
+    .bot-status .status-uptime {
+        display: none;
+    }
+}
+
+/* ==========================================
+   LARGE DESKTOP (>1200px)
+   Slightly wider sidebar for better readability
+   ========================================== */
+
+@media (min-width: 1200px) {
+    :root {
+        --sidebar-width: 240px;
+    }
+}
+
+/* ==========================================
+   EXTRA LARGE SCREENS (>1600px)
+   ========================================== */
+
+@media (min-width: 1600px) {
+    :root {
+        --sidebar-width: 260px;
+    }
+}
+
 
 /* ==========================================
    Cards
@@ -789,6 +1132,7 @@ a:hover {
    ========================================== */
 
 .filters-card {
+    padding: var(--spacing-lg);
     margin-bottom: var(--spacing-lg);
 }
 
@@ -819,11 +1163,15 @@ a:hover {
 .filter-group input,
 .filter-group select {
     width: 100%;
-    padding: var(--spacing-sm) var(--spacing-md);
+    height: 50px;
+    padding: 0 16px;
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     color: var(--text-primary);
+    font-size: 14px;
+    line-height: 50px;
+    box-sizing: border-box;
 }
 
 .filter-actions {
@@ -1146,87 +1494,6 @@ a:hover {
     color: var(--danger);
 }
 
-/* ==========================================
-   Responsive Design
-   ========================================== */
-
-@media (max-width: 768px) {
-    .sidebar {
-        transform: translateX(-100%);
-        width: var(--sidebar-width);
-    }
-    
-    .sidebar.open {
-        transform: translateX(0);
-    }
-    
-    .main-content {
-        margin-left: 0;
-    }
-    
-    .mobile-menu-btn {
-        display: block;
-    }
-    
-    .content {
-        padding: var(--spacing-md);
-    }
-    
-    .dashboard-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .settings-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .filters-form {
-        flex-direction: column;
-    }
-    
-    .filter-group {
-        width: 100%;
-    }
-    
-    .form-actions {
-        flex-direction: column;
-    }
-    
-    .btn {
-        width: 100%;
-    }
-    
-    .status-display {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    
-    .action-item {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--spacing-sm);
-    }
-    
-    .action-details {
-        align-items: flex-start;
-    }
-}
-
-/* Overlay for mobile sidebar */
-.sidebar-overlay {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: 99;
-}
-
-.sidebar-overlay.active {
-    display: block;
-}
 
 /* ==================== Additional Styles for New Pages ==================== */
 
@@ -1578,6 +1845,7 @@ a:hover {
 
 /* Filters card spacing */
 .filters-card {
+    padding: var(--spacing-lg);
     margin-bottom: 1.5rem;
 }
 
@@ -1663,19 +1931,21 @@ td .badge {
 
 /* Ensure all filter-actions buttons have consistent sizing */
 .filter-actions .btn {
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-    height: auto;
-    line-height: 1.5;
+    height: 50px;
+    padding: 0 20px;
+    font-size: 14px;
+    line-height: 50px;
     min-width: 80px;
+    box-sizing: border-box;
 }
 
 /* Make Clear button match Search/Filter button styling */
 .filter-actions .btn-secondary {
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-    height: auto;
-    line-height: 1.5;
+    height: 50px;
+    padding: 0 20px;
+    font-size: 14px;
+    line-height: 50px;
+    box-sizing: border-box;
 }
 
 /* Ensure buttons in filters-form align properly */
@@ -1715,4 +1985,120 @@ td .badge {
 /* More space between form fields in modals */
 .modal-content > form .form-group {
     margin-bottom: 1.5rem;
+}
+
+/* ==========================================
+   Input with Icon (Password Toggle)
+   Fix for eye icon positioning in credentials page
+   Added: 2025-12-13
+   ========================================== */
+
+.input-with-icon {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-icon input {
+    width: 100%;
+    padding-right: 45px; /* Make room for the icon */
+}
+
+.input-with-icon .btn-icon {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 8px;
+    font-size: 1rem;
+    line-height: 1;
+    z-index: 2;
+    transition: color var(--transition-fast);
+}
+
+.input-with-icon .btn-icon:hover {
+    color: var(--text-primary);
+}
+
+
+/* ==========================================
+   Filter Card Equal Heights Fix
+   Make paired filter cards the same height
+   Added: 2025-12-13
+   ========================================== */
+
+/* Filters page - make cards in same row equal height */
+.filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+    align-items: stretch; /* Make all items same height */
+}
+
+.filters-grid .filter-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* Fill available height */
+}
+
+.filters-grid .filter-card .card-body {
+    flex: 1; /* Grow to fill space */
+    display: flex;
+    flex-direction: column;
+}
+
+.filters-grid .filter-card .filter-settings {
+    flex: 1; /* Push action row to bottom */
+    display: flex;
+    flex-direction: column;
+}
+
+.filters-grid .filter-card .action-row {
+    margin-top: auto; /* Push to bottom */
+}
+
+/* Link lists container - equal height cards */
+.link-lists-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+    align-items: stretch;
+}
+
+.link-lists-container .link-list-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.link-lists-container .link-list-card .card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.link-lists-container .link-list-card .domain-list {
+    flex: 1;
+    min-height: 150px; /* Minimum height for domain lists */
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+/* Raid settings - Detection Settings equal height */
+.filter-section .filters-grid .filter-card {
+    min-height: auto; /* Reset any min-height */
+}
+
+/* Make filter-settings take consistent space */
+.filter-card .filter-settings {
+    min-height: 80px; /* Ensure minimum height for settings area */
+}
+
+/* For cards with only action/duration (no extra inputs) */
+.filter-card .filter-settings:has(.action-row:first-child) {
+    min-height: 60px;
 }

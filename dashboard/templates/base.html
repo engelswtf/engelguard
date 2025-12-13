@@ -25,65 +25,81 @@
             </div>
             
             <nav class="sidebar-nav">
-                <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}" data-tooltip="Dashboard">
                     <span class="nav-icon">📊</span>
                     <span class="nav-text">Dashboard</span>
                 </a>
-                <a href="{{ url_for('commands_page') }}" class="nav-item {% if request.endpoint == 'commands_page' %}active{% endif %}">
+                <a href="{{ url_for('commands_page') }}" class="nav-item {% if request.endpoint == 'commands_page' %}active{% endif %}" data-tooltip="Commands">
                     <span class="nav-icon">💬</span>
                     <span class="nav-text">Commands</span>
                 </a>
-                <a href="{{ url_for('timers_page') }}" class="nav-item {% if request.endpoint == 'timers_page' %}active{% endif %}">
+                <a href="{{ url_for('timers_page') }}" class="nav-item {% if request.endpoint == 'timers_page' %}active{% endif %}" data-tooltip="Timers">
                     <span class="nav-icon">⏰</span>
                     <span class="nav-text">Timers</span>
                 </a>
-                <a href="{{ url_for('filters_page') }}" class="nav-item {% if request.endpoint == 'filters_page' %}active{% endif %}">
+                <a href="{{ url_for('filters_page') }}" class="nav-item {% if request.endpoint == 'filters_page' %}active{% endif %}" data-tooltip="Filters">
                     <span class="nav-icon">🔍</span>
                     <span class="nav-text">Filters</span>
                 </a>
-                <a href="{{ url_for('strikes_page') }}" class="nav-item {% if request.endpoint == 'strikes_page' %}active{% endif %}">
+                <a href="{{ url_for('banned_words_page') }}" class="nav-item {% if request.endpoint == 'banned_words_page' %}active{% endif %}" data-tooltip="Banned Words">
+                    <span class="nav-icon">🚫</span>
+                    <span class="nav-text">Banned Words</span>
+                </a>
+                <a href="{{ url_for('raid_settings') }}" class="nav-item {% if request.endpoint == 'raid_settings' %}active{% endif %}" data-tooltip="Raid Protection">
+                    <span class="nav-icon">🛡️</span>
+                    <span class="nav-text">Raid Protection</span>
+                </a>
+                <a href="{{ url_for('alerts_settings') }}" class="nav-item {% if request.endpoint == 'alerts_settings' %}active{% endif %}" data-tooltip="Chat Alerts">
+                    <span class="nav-icon">🔔</span>
+                    <span class="nav-text">Chat Alerts</span>
+                </a>
+                <a href="{{ url_for('strikes_page') }}" class="nav-item {% if request.endpoint == 'strikes_page' %}active{% endif %}" data-tooltip="Strikes">
                     <span class="nav-icon">⚠️</span>
                     <span class="nav-text">Strikes</span>
                 </a>
-                <a href="{{ url_for('loyalty_page') }}" class="nav-item {% if request.endpoint == 'loyalty_page' %}active{% endif %}">
+                <a href="{{ url_for('loyalty_page') }}" class="nav-item {% if request.endpoint == 'loyalty_page' %}active{% endif %}" data-tooltip="Loyalty">
                     <span class="nav-icon">⭐</span>
                     <span class="nav-text">Loyalty</span>
                 </a>
-                <a href="{{ url_for('quotes_page') }}" class="nav-item {% if request.endpoint == 'quotes_page' %}active{% endif %}">
+                <a href="{{ url_for('quotes_page') }}" class="nav-item {% if request.endpoint == 'quotes_page' %}active{% endif %}" data-tooltip="Quotes">
                     <span class="nav-icon">📝</span>
                     <span class="nav-text">Quotes</span>
                 </a>
-                <a href="{{ url_for('giveaways_page') }}" class="nav-item {% if request.endpoint == 'giveaways_page' %}active{% endif %}">
+                <a href="{{ url_for('giveaways_page') }}" class="nav-item {% if request.endpoint == 'giveaways_page' %}active{% endif %}" data-tooltip="Giveaways">
                     <span class="nav-icon">🎁</span>
                     <span class="nav-text">Giveaways</span>
                 </a>
-                <a href="{{ url_for('songrequests_page') }}" class="nav-item {% if request.endpoint == 'songrequests_page' %}active{% endif %}">
+                <a href="{{ url_for('queue_management') }}" class="nav-item {% if request.endpoint == 'queue_management' %}active{% endif %}" data-tooltip="Queue">
+                    <span class="nav-icon">📋</span>
+                    <span class="nav-text">Queue</span>
+                </a>
+                <a href="{{ url_for('songrequests_page') }}" class="nav-item {% if request.endpoint == 'songrequests_page' %}active{% endif %}" data-tooltip="Song Requests">
                     <span class="nav-icon">🎵</span>
                     <span class="nav-text">Song Requests</span>
                 </a>
-                <a href="{{ url_for('modlog') }}" class="nav-item {% if request.endpoint == 'modlog' %}active{% endif %}">
+                <a href="{{ url_for('modlog') }}" class="nav-item {% if request.endpoint == 'modlog' %}active{% endif %}" data-tooltip="Mod Log">
                     <span class="nav-icon">📋</span>
                     <span class="nav-text">Mod Log</span>
                 </a>
-                <a href="{{ url_for('users') }}" class="nav-item {% if request.endpoint == 'users' %}active{% endif %}">
+                <a href="{{ url_for('users') }}" class="nav-item {% if request.endpoint == 'users' %}active{% endif %}" data-tooltip="Users">
                     <span class="nav-icon">👥</span>
                     <span class="nav-text">Users</span>
                 </a>
                 
                 <div class="nav-divider"></div>
                 
-                <a href="{{ url_for('settings') }}" class="nav-item {% if request.endpoint == 'settings' %}active{% endif %}">
+                <a href="{{ url_for('settings') }}" class="nav-item {% if request.endpoint == 'settings' %}active{% endif %}" data-tooltip="Settings">
                     <span class="nav-icon">⚙️</span>
                     <span class="nav-text">Settings</span>
                 </a>
-                <a href="{{ url_for('credentials') }}" class="nav-item {% if request.endpoint == 'credentials' %}active{% endif %}">
+                <a href="{{ url_for('credentials') }}" class="nav-item {% if request.endpoint == 'credentials' %}active{% endif %}" data-tooltip="Credentials">
                     <span class="nav-icon">🔑</span>
                     <span class="nav-text">Credentials</span>
                 </a>
             </nav>
             
             <div class="sidebar-footer">
-                <a href="{{ url_for('logout') }}" class="nav-item logout">
+                <a href="{{ url_for('logout') }}" class="nav-item logout" data-tooltip="Logout">
                     <span class="nav-icon">🚪</span>
                     <span class="nav-text">Logout</span>
                 </a>

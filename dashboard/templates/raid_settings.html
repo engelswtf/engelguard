@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}Raid Protection - EngelGuard Dashboard{% endblock %}
+{% block page_title %}Raid Protection{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <p class="page-description">Configure automatic raid protection settings. When a raid is detected, the bot will enable protective measures to keep your chat safe.</p>
+</div>
+
+<!-- Quick Actions - Manual Controls -->
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-header">
+        <div class="filter-title">
+            <span class="filter-icon">⚡</span>
+            <h3>Quick Actions</h3>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="filter-description">Manually enable or disable raid protection mode. These controls work independently of automatic detection.</p>
+        <div class="action-buttons" style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <form method="POST" action="{{ url_for('raid_settings') }}" style="display: inline;">
+                <input type="hidden" name="action" value="enable_protection">
+                <button type="submit" class="btn btn-warning">
+                    <span>🛡️</span> Enable Protection Now
+                </button>
+            </form>
+            <form method="POST" action="{{ url_for('raid_settings') }}" style="display: inline;">
+                <input type="hidden" name="action" value="disable_protection">
+                <button type="submit" class="btn btn-secondary">
+                    <span>✓</span> Disable Protection
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('raid_settings') }}" id="raidSettingsForm">
+<input type="hidden" name="action" value="save_settings">
+
+<!-- Main Toggle Card -->
+<div class="card">
+    <div class="card-header">
+        <div class="filter-title">
+            <span class="filter-icon">🛡️</span>
+            <h3>Raid Protection</h3>
+        </div>
+        <label class="toggle">
+            <input type="checkbox" name="enabled" {% if settings.enabled %}checked{% endif %}>
+            <span class="toggle-slider"></span>
+        </label>
+    </div>
+    <div class="card-body">
+        <p class="filter-description">When enabled, the bot will automatically detect incoming raids and enable protective measures.</p>
+    </div>
+</div>
+
+<!-- Detection Settings -->
+<div class="filter-section">
+    <h2 class="section-title">Detection Settings</h2>
+    <div class="filters-grid">
+        <!-- Auto-Detect Threshold -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">👥</span>
+                    <h3>Auto-Detect Threshold</h3>
+                </div>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Minimum number of viewers in a raid to trigger automatic protection.</p>
+                <div class="filter-settings">
+                    <div class="form-group">
+                        <label>Minimum Raiders</label>
+                        <input type="number" name="auto_detect_threshold" value="{{ settings.auto_detect_threshold or 5 }}" min="1" max="1000">
+                        <small class="form-hint">Set to 1 to trigger on any raid</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Protection Duration -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">⏱️</span>
+                    <h3>Protection Duration</h3>
+                </div>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">How long to keep protective measures active after a raid is detected.</p>
+                <div class="filter-settings">
+                    <div class="form-group">
+                        <label>Duration (minutes)</label>
+                        <select name="duration_minutes">
+                            <option value="2" {% if settings.duration_minutes == 2 %}selected{% endif %}>2 minutes</option>
+                            <option value="5" {% if settings.duration_minutes == 5 or not settings.duration_minutes %}selected{% endif %}>5 minutes</option>
+                            <option value="10" {% if settings.duration_minutes == 10 %}selected{% endif %}>10 minutes</option>
+                            <option value="15" {% if settings.duration_minutes == 15 %}selected{% endif %}>15 minutes</option>
+                            <option value="30" {% if settings.duration_minutes == 30 %}selected{% endif %}>30 minutes</option>
+                            <option value="60" {% if settings.duration_minutes == 60 %}selected{% endif %}>1 hour</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Protection Measures -->
+<div class="filter-section">
+    <h2 class="section-title">Protection Measures</h2>
+    <div class="filters-grid">
+        <!-- Follower-Only Mode -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">💜</span>
+                    <h3>Follower-Only Mode</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="follower_only" {% if settings.follower_only %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Enable follower-only chat during raid protection.</p>
+                <div class="filter-settings">
+                    <div class="form-group">
+                        <label>Minimum Follow Age</label>
+                        <select name="follower_age_minutes">
+                            <option value="0" {% if settings.follower_age_minutes == 0 %}selected{% endif %}>No minimum (just following)</option>
+                            <option value="10" {% if settings.follower_age_minutes == 10 or not settings.follower_age_minutes %}selected{% endif %}>10 minutes</option>
+                            <option value="30" {% if settings.follower_age_minutes == 30 %}selected{% endif %}>30 minutes</option>
+                            <option value="60" {% if settings.follower_age_minutes == 60 %}selected{% endif %}>1 hour</option>
+                            <option value="1440" {% if settings.follower_age_minutes == 1440 %}selected{% endif %}>1 day</option>
+                            <option value="10080" {% if settings.follower_age_minutes == 10080 %}selected{% endif %}>1 week</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slow Mode -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">🐢</span>
+                    <h3>Slow Mode</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="slow_mode" {% if settings.slow_mode %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Enable slow mode during raid protection to limit message frequency.</p>
+                <div class="filter-settings">
+                    <div class="form-group">
+                        <label>Slow Mode Duration</label>
+                        <select name="slow_mode_seconds">
+                            <option value="3" {% if settings.slow_mode_seconds == 3 %}selected{% endif %}>3 seconds</option>
+                            <option value="5" {% if settings.slow_mode_seconds == 5 %}selected{% endif %}>5 seconds</option>
+                            <option value="10" {% if settings.slow_mode_seconds == 10 %}selected{% endif %}>10 seconds</option>
+                            <option value="30" {% if settings.slow_mode_seconds == 30 or not settings.slow_mode_seconds %}selected{% endif %}>30 seconds</option>
+                            <option value="60" {% if settings.slow_mode_seconds == 60 %}selected{% endif %}>60 seconds</option>
+                            <option value="120" {% if settings.slow_mode_seconds == 120 %}selected{% endif %}>2 minutes</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Welcome Message -->
+<div class="filter-section">
+    <h2 class="section-title">Raid Welcome Message</h2>
+    <div class="card">
+        <div class="card-body">
+            <p class="filter-description">Custom message to send when a raid is detected. Leave empty to disable.</p>
+            <div class="form-group">
+                <label>Welcome Message</label>
+                <textarea name="welcome_message" rows="3" placeholder="Welcome raiders! Chat is in protected mode for a few minutes. 🛡️">{{ settings.welcome_message or "Welcome raiders! Chat is in protected mode for a few minutes. 🛡️" }}</textarea>
+                <small class="form-hint">Tip: The raider's name will be automatically included before this message.</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="form-actions">
+    <button type="submit" class="btn btn-primary btn-lg">Save Raid Settings</button>
+</div>
+</form>
+
+<style>
+/* Additional styles for raid settings page */
+.filter-section { margin-bottom: 2rem; }
+.section-title { font-size: 1.25rem; font-weight: 600; color: var(--text-primary); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border-color); }
+.filters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
+.filter-card { transition: transform 0.2s, box-shadow 0.2s; }
+.filter-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
+.filter-card .card-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; }
+.filter-title { display: flex; align-items: center; gap: 0.5rem; }
+.filter-icon { font-size: 1.25rem; }
+.filter-title h3 { margin: 0; font-size: 1rem; }
+.filter-description { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem; }
+.filter-settings { display: flex; flex-direction: column; gap: 0.75rem; }
+.form-group label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.25rem; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-md); background-color: var(--bg-tertiary); color: var(--text-primary); }
+.form-group textarea { resize: vertical; min-height: 80px; }
+.form-hint { display: block; margin-top: 0.25rem; font-size: 0.75rem; color: var(--text-muted); }
+</style>
+{% endblock %}
