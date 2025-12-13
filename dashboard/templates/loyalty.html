@@ -10,21 +10,18 @@
 
 <div class="card">
     <div class="card-header">
-        <h3>Loyalty Settings</h3>
+        <div class="filter-title">
+            <span class="filter-icon">⚙️</span>
+            <h3>Loyalty Settings</h3>
+        </div>
+        <label class="toggle">
+            <input type="checkbox" name="enabled" form="loyaltyForm" {% if settings.enabled %}checked{% endif %}>
+            <span class="toggle-slider"></span>
+        </label>
     </div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('loyalty_page') }}">
+        <form method="POST" action="{{ url_for('loyalty_page') }}" id="loyaltyForm">
             <input type="hidden" name="action" value="settings">
-            
-            <div class="form-group">
-                <label class="toggle-label">
-                    <span>Enable Loyalty System</span>
-                    <label class="toggle">
-                        <input type="checkbox" name="enabled" {% if settings.enabled %}checked{% endif %}>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </label>
-            </div>
             
             <div class="form-row">
                 <div class="form-group">
@@ -131,17 +128,19 @@
 </div>
 
 <style>
-.toggle-label {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-}
+.filter-title { display: flex; align-items: center; gap: 0.5rem; }
+.filter-icon { font-size: 1.25rem; }
+.filter-title h3 { margin: 0; font-size: 1rem; }
 .form-row {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
+    margin-bottom: 1rem;
 }
+.form-group { margin-bottom: 0.75rem; }
+.form-group label { display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.25rem; }
+.form-group input { width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; }
+.form-group small { display: block; margin-top: 0.25rem; color: var(--text-muted); font-size: 0.8rem; }
 .rank-badge {
     display: inline-flex;
     align-items: center;
@@ -159,6 +158,7 @@
 .modal-sm .modal-content {
     max-width: 400px;
 }
+@media (max-width: 768px) { .form-row { grid-template-columns: 1fr; } }
 </style>
 
 <script>

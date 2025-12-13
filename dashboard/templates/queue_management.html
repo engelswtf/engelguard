@@ -1,0 +1,546 @@
+{% extends "base.html" %}
+
+{% block title %}Queue Management - EngelGuard{% endblock %}
+{% block page_title %}Queue Management{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-info">
+        <p class="header-subtitle">Manage viewer queues for games and activities</p>
+    </div>
+</div>
+
+<!-- Queue Settings -->
+<div class="card">
+    <div class="card-header">
+        <h2>Default Queue Settings</h2>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('queue_management_settings') }}" id="settingsForm">
+            <input type="hidden" name="action" value="settings">
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="default_max_size">Default Max Queue Size</label>
+                    <input type="number" id="default_max_size" name="default_max_size" 
+                           min="1" max="1000" value="{{ settings.default_max_size or 50 }}">
+                    <span class="form-hint">Maximum viewers allowed in queue</span>
+                </div>
+                <div class="form-group">
+                    <label for="default_open">Default Queue State</label>
+                    <select id="default_open" name="default_open">
+                        <option value="closed" {% if not settings.default_open %}selected{% endif %}>Closed</option>
+                        <option value="open" {% if settings.default_open %}selected{% endif %}>Open</option>
+                    </select>
+                    <span class="form-hint">Initial state when creating queues</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="sub_priority" {% if settings.sub_priority %}checked{% endif %}>
+                    <span>Subscriber Priority</span>
+                </label>
+                <span class="form-hint">Subscribers are placed at the front of the queue</span>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Active Queues -->
+<div class="card">
+    <div class="card-header">
+        <h2>Active Queues</h2>
+        <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ New Queue</button>
+    </div>
+    <div class="card-body">
+        {% if queues %}
+        <div class="queues-grid">
+            {% for queue in queues %}
+            <div class="queue-card {% if queue.is_open %}queue-open{% else %}queue-closed{% endif %}" data-queue="{{ queue.queue_name }}">
+                <div class="queue-header">
+                    <h3>{{ queue.queue_name }}</h3>
+                    <span class="badge {% if queue.is_open %}badge-success{% else %}badge-secondary{% endif %}">
+                        {{ 'OPEN' if queue.is_open else 'CLOSED' }}
+                    </span>
+                </div>
+                <div class="queue-stats">
+                    <div class="queue-stat">
+                        <span class="stat-value entry-count">{{ queue.entry_count }}</span>
+                        <span class="stat-label">In Queue</span>
+                    </div>
+                    <div class="queue-stat">
+                        <span class="stat-value">{{ queue.max_size }}</span>
+                        <span class="stat-label">Max Size</span>
+                    </div>
+                    <div class="queue-stat">
+                        <span class="stat-value">{{ queue.picked_count }}</span>
+                        <span class="stat-label">Picked</span>
+                    </div>
+                </div>
+                
+                {% if queue.entries %}
+                <div class="queue-entries">
+                    <h4>Current Queue</h4>
+                    <ol class="entry-list">
+                        {% for entry in queue.entries[:10] %}
+                        <li class="{% if entry.is_subscriber %}subscriber{% endif %}">
+                            {{ entry.username }}
+                            {% if entry.is_subscriber %}<span class="sub-badge">SUB</span>{% endif %}
+                        </li>
+                        {% endfor %}
+                        {% if queue.entries|length > 10 %}
+                        <li class="more-entries">+{{ queue.entries|length - 10 }} more...</li>
+                        {% endif %}
+                    </ol>
+                </div>
+                {% else %}
+                <div class="queue-empty">
+                    <span>Queue is empty</span>
+                </div>
+                {% endif %}
+                
+                <div class="queue-actions">
+                    {% if queue.is_open %}
+                    <button class="btn btn-warning btn-sm" onclick="queueAction('close', '{{ queue.queue_name }}')">
+                        Close
+                    </button>
+                    {% else %}
+                    <button class="btn btn-success btn-sm" onclick="queueAction('open', '{{ queue.queue_name }}')">
+                        Open
+                    </button>
+                    {% endif %}
+                    <button class="btn btn-primary btn-sm" onclick="queueAction('next', '{{ queue.queue_name }}')" 
+                            {% if not queue.entries %}disabled{% endif %}>
+                        Pick Next
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="queueAction('random', '{{ queue.queue_name }}')"
+                            {% if not queue.entries %}disabled{% endif %}>
+                        Random
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="queueAction('clear', '{{ queue.queue_name }}')">
+                        Clear
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <span class="empty-icon">👥</span>
+            <h3>No active queues</h3>
+            <p>Queues are created when viewers use <code>!join</code> or when you open a queue with <code>!queueopen</code></p>
+            <button class="btn btn-primary" onclick="openCreateModal()">Create Queue</button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Queue History -->
+<div class="card">
+    <div class="card-header">
+        <h2>Recent Activity</h2>
+    </div>
+    <div class="card-body">
+        {% if history %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th width="120">Time</th>
+                    <th width="100">Queue</th>
+                    <th width="100">Action</th>
+                    <th>User</th>
+                    <th width="100">By</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in history %}
+                <tr>
+                    <td>{{ event.timestamp }}</td>
+                    <td><code>{{ event.queue_name }}</code></td>
+                    <td>
+                        {% if event.action == 'picked' %}
+                            <span class="badge badge-success">Picked</span>
+                        {% elif event.action == 'joined' %}
+                            <span class="badge badge-primary">Joined</span>
+                        {% elif event.action == 'left' %}
+                            <span class="badge badge-secondary">Left</span>
+                        {% elif event.action == 'cleared' %}
+                            <span class="badge badge-danger">Cleared</span>
+                        {% else %}
+                            <span class="badge">{{ event.action }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ event.username or '-' }}</td>
+                    <td>{{ event.performed_by or 'System' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state small">
+            <span class="empty-icon">📋</span>
+            <p>No recent queue activity</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Create Queue Modal -->
+<div class="modal" id="createModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Create New Queue</h2>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('queue_management_action') }}" id="createForm">
+            <input type="hidden" name="action" value="create">
+            
+            <div class="form-group">
+                <label for="queue_name">Queue Name *</label>
+                <input type="text" id="queue_name" name="queue_name" required 
+                       placeholder="default" pattern="[a-zA-Z0-9_-]+" maxlength="32">
+                <span class="form-hint">Alphanumeric characters, hyphens, and underscores only</span>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="max_size">Max Size</label>
+                    <input type="number" id="max_size" name="max_size" min="1" max="1000" value="50">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label" style="margin-top: 2rem;">
+                        <input type="checkbox" name="open_immediately">
+                        <span>Open Immediately</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Queue</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Pick Result Modal -->
+<div class="modal" id="pickResultModal">
+    <div class="modal-content modal-small">
+        <div class="modal-header">
+            <h2>Selected!</h2>
+            <button class="modal-close" onclick="closePickModal()">&times;</button>
+        </div>
+        <div class="pick-result">
+            <span class="pick-icon">🎮</span>
+            <span class="pick-username" id="pickedUsername"></span>
+            <span class="pick-message">is up next!</span>
+        </div>
+        <div class="form-actions">
+            <button type="button" class="btn btn-primary" onclick="closePickModal()">OK</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.queues-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+
+.queue-card {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 1.25rem;
+    border: 2px solid var(--border-color);
+    transition: border-color 0.2s;
+}
+
+.queue-card.queue-open {
+    border-color: var(--success-color);
+}
+
+.queue-card.queue-closed {
+    border-color: var(--border-color);
+}
+
+.queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.queue-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    text-transform: capitalize;
+}
+
+.queue-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: var(--bg-primary);
+    border-radius: 8px;
+}
+
+.queue-stat {
+    flex: 1;
+    text-align: center;
+}
+
+.queue-stat .stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.queue-stat .stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.queue-entries {
+    margin-bottom: 1rem;
+}
+
+.queue-entries h4 {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.entry-list {
+    margin: 0;
+    padding-left: 1.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.entry-list li {
+    padding: 0.25rem 0;
+    font-size: 0.9rem;
+}
+
+.entry-list li.subscriber {
+    color: var(--primary-color);
+}
+
+.sub-badge {
+    font-size: 0.65rem;
+    background: var(--primary-color);
+    color: white;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}
+
+.more-entries {
+    color: var(--text-secondary);
+    font-style: italic;
+    list-style: none;
+    margin-left: -1.5rem;
+}
+
+.queue-empty {
+    text-align: center;
+    padding: 1.5rem;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.queue-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.queue-actions .btn {
+    flex: 1;
+    min-width: 70px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-secondary);
+}
+
+.empty-state.small {
+    padding: 2rem;
+}
+
+.empty-icon {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.modal-small {
+    max-width: 400px;
+}
+
+.pick-result {
+    text-align: center;
+    padding: 2rem;
+}
+
+.pick-icon {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+}
+
+.pick-username {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.pick-message {
+    color: var(--text-secondary);
+}
+
+.btn-sm {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    .queues-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .queue-actions {
+        flex-direction: column;
+    }
+    
+    .queue-actions .btn {
+        width: 100%;
+    }
+}
+</style>
+
+<script>
+function openCreateModal() {
+    document.getElementById('createModal').classList.add('active');
+}
+
+function closeModal() {
+    document.getElementById('createModal').classList.remove('active');
+}
+
+function closePickModal() {
+    document.getElementById('pickResultModal').classList.remove('active');
+}
+
+function showPickResult(username) {
+    document.getElementById('pickedUsername').textContent = username;
+    document.getElementById('pickResultModal').classList.add('active');
+}
+
+function queueAction(action, queueName) {
+    if (action === 'clear') {
+        if (!confirm('Clear all entries from queue "' + queueName + '"?')) {
+            return;
+        }
+    }
+    
+    const formData = new FormData();
+    formData.append('action', action);
+    formData.append('queue_name', queueName);
+    
+    fetch('{{ url_for("queue_management_action") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            if (action === 'next' || action === 'random') {
+                if (data.picked) {
+                    showPickResult(data.picked.username);
+                } else {
+                    alert('Queue is empty!');
+                }
+            } else {
+                location.reload();
+            }
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to perform action');
+    });
+}
+
+// Auto-refresh queue data every 10 seconds
+setInterval(function() {
+    fetch('{{ url_for("queue_management_data") }}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update queue counts without full reload
+                data.queues.forEach(function(queue) {
+                    const card = document.querySelector('[data-queue="' + queue.queue_name + '"]');
+                    if (card) {
+                        const countEl = card.querySelector('.entry-count');
+                        if (countEl) countEl.textContent = queue.entry_count;
+                    }
+                });
+            }
+        })
+        .catch(function() {});
+}, 10000);
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeModal();
+        closePickModal();
+    }
+});
+
+document.getElementById('createModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+document.getElementById('pickResultModal').addEventListener('click', function(e) {
+    if (e.target === this) closePickModal();
+});
+</script>
+{% endblock %}

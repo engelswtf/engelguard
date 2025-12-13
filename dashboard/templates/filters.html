@@ -5,153 +5,394 @@
 
 {% block content %}
 <div class="page-header">
-    <p class="page-description">Configure spam detection filters for your channel.</p>
+    <p class="page-description">Configure spam detection filters for your channel. Each filter can be customized with its own action and timeout duration.</p>
 </div>
 
-<form method="POST" action="{{ url_for('filters_page') }}">
-<div class="filters-grid">
-    <!-- Caps Filter -->
-    <div class="card filter-card">
-        <div class="card-header">
-            <h3>Caps Filter</h3>
-            <label class="toggle">
-                <input type="checkbox" name="caps_enabled" {% if settings.caps_enabled %}checked{% endif %}>
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-        <div class="card-body">
-            <p class="filter-description">Detect messages with excessive capital letters.</p>
-            <div class="form-group">
-                <label>Minimum Message Length</label>
-                <input type="number" name="caps_min_length" value="{{ settings.caps_min_length }}" min="5" max="100">
-                <small>Only check messages longer than this</small>
-            </div>
-            <div class="form-group">
-                <label>Maximum Caps Percentage</label>
-                <input type="number" name="caps_max_percent" value="{{ settings.caps_max_percent }}" min="10" max="100">
-                <small>Trigger when caps exceed this %</small>
-            </div>
-        </div>
+<!-- Global Sensitivity -->
+<div class="card sensitivity-card">
+    <div class="card-header">
+        <h3>Global Sensitivity</h3>
     </div>
-    
-    <!-- Emote Filter -->
-    <div class="card filter-card">
-        <div class="card-header">
-            <h3>Emote Filter</h3>
-            <label class="toggle">
-                <input type="checkbox" name="emote_enabled" {% if settings.emote_enabled %}checked{% endif %}>
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-        <div class="card-body">
-            <p class="filter-description">Detect emote spam in messages.</p>
-            <div class="form-group">
-                <label>Maximum Emotes</label>
-                <input type="number" name="emote_max_count" value="{{ settings.emote_max_count }}" min="1" max="50">
-                <small>Maximum emotes allowed per message</small>
+    <div class="card-body">
+        <p class="filter-description">Quick presets to adjust all filter thresholds at once.</p>
+        <div class="sensitivity-slider">
+            <div class="sensitivity-options">
+                <button type="button" class="sensitivity-btn {% if settings.global_sensitivity == 'low' %}active{% endif %}" data-level="low">
+                    <span class="sensitivity-icon">🟢</span>
+                    <span class="sensitivity-label">Low</span>
+                    <span class="sensitivity-desc">Relaxed - fewer false positives</span>
+                </button>
+                <button type="button" class="sensitivity-btn {% if settings.global_sensitivity == 'medium' or not settings.global_sensitivity %}active{% endif %}" data-level="medium">
+                    <span class="sensitivity-icon">🟡</span>
+                    <span class="sensitivity-label">Medium</span>
+                    <span class="sensitivity-desc">Balanced - recommended</span>
+                </button>
+                <button type="button" class="sensitivity-btn {% if settings.global_sensitivity == 'high' %}active{% endif %}" data-level="high">
+                    <span class="sensitivity-icon">🔴</span>
+                    <span class="sensitivity-label">High</span>
+                    <span class="sensitivity-desc">Strict - catches more spam</span>
+                </button>
             </div>
         </div>
     </div>
-    
-    <!-- Symbol Filter -->
-    <div class="card filter-card">
-        <div class="card-header">
-            <h3>Symbol Filter</h3>
-            <label class="toggle">
-                <input type="checkbox" name="symbol_enabled" {% if settings.symbol_enabled %}checked{% endif %}>
-                <span class="toggle-slider"></span>
-            </label>
+</div>
+
+<form method="POST" action="{{ url_for('filters_page') }}" id="filtersForm">
+<input type="hidden" name="action" value="save_filters">
+<input type="hidden" name="global_sensitivity" id="globalSensitivity" value="{{ settings.global_sensitivity or 'medium' }}">
+
+<!-- Text Filters Section -->
+<div class="filter-section">
+    <h2 class="section-title">Text Filters</h2>
+    <div class="filters-grid">
+        <!-- Caps Filter -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">🔠</span>
+                    <h3>Caps Filter</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="caps_enabled" {% if settings.caps_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Detect messages with excessive capital letters.</p>
+                <div class="filter-settings">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Min Message Length</label>
+                            <input type="number" name="caps_min_length" value="{{ settings.caps_min_length }}" min="5" max="100">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Caps %</label>
+                            <input type="number" name="caps_max_percent" value="{{ settings.caps_max_percent }}" min="10" max="100">
+                        </div>
+                    </div>
+                    <div class="form-row action-row">
+                        <div class="form-group">
+                            <label>Action</label>
+                            <select name="caps_action" class="action-select">
+                                <option value="delete" {% if settings.caps_action == 'delete' %}selected{% endif %}>Delete</option>
+                                <option value="timeout" {% if settings.caps_action == 'timeout' or not settings.caps_action %}selected{% endif %}>Timeout</option>
+                                <option value="ban" {% if settings.caps_action == 'ban' %}selected{% endif %}>Ban</option>
+                            </select>
+                        </div>
+                        <div class="form-group duration-group">
+                            <label>Duration</label>
+                            <select name="caps_duration" class="duration-select">
+                                <option value="60" {% if settings.caps_duration == 60 or not settings.caps_duration %}selected{% endif %}>1 minute</option>
+                                <option value="300" {% if settings.caps_duration == 300 %}selected{% endif %}>5 minutes</option>
+                                <option value="600" {% if settings.caps_duration == 600 %}selected{% endif %}>10 minutes</option>
+                                <option value="1800" {% if settings.caps_duration == 1800 %}selected{% endif %}>30 minutes</option>
+                                <option value="3600" {% if settings.caps_duration == 3600 %}selected{% endif %}>1 hour</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-            <p class="filter-description">Detect excessive symbols and ASCII art.</p>
-            <div class="form-group">
-                <label>Maximum Symbol Percentage</label>
-                <input type="number" name="symbol_max_percent" value="{{ settings.symbol_max_percent }}" min="10" max="100">
-                <small>Trigger when symbols exceed this %</small>
+        
+        <!-- Length Filter -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">📏</span>
+                    <h3>Length Filter</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="length_enabled" {% if settings.length_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Limit maximum message length.</p>
+                <div class="filter-settings">
+                    <div class="form-group">
+                        <label>Maximum Characters</label>
+                        <input type="number" name="length_max_chars" value="{{ settings.length_max_chars }}" min="100" max="1000">
+                    </div>
+                    <div class="form-row action-row">
+                        <div class="form-group">
+                            <label>Action</label>
+                            <select name="length_action" class="action-select">
+                                <option value="delete" {% if settings.length_action == 'delete' or not settings.length_action %}selected{% endif %}>Delete</option>
+                                <option value="timeout" {% if settings.length_action == 'timeout' %}selected{% endif %}>Timeout</option>
+                                <option value="ban" {% if settings.length_action == 'ban' %}selected{% endif %}>Ban</option>
+                            </select>
+                        </div>
+                        <div class="form-group duration-group">
+                            <label>Duration</label>
+                            <select name="length_duration" class="duration-select">
+                                <option value="60" {% if settings.length_duration == 60 or not settings.length_duration %}selected{% endif %}>1 minute</option>
+                                <option value="300" {% if settings.length_duration == 300 %}selected{% endif %}>5 minutes</option>
+                                <option value="600" {% if settings.length_duration == 600 %}selected{% endif %}>10 minutes</option>
+                                <option value="1800" {% if settings.length_duration == 1800 %}selected{% endif %}>30 minutes</option>
+                                <option value="3600" {% if settings.length_duration == 3600 %}selected{% endif %}>1 hour</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Repetition Filter -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">🔁</span>
+                    <h3>Repetition Filter</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="repetition_enabled" {% if settings.repetition_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Detect repeated words and characters.</p>
+                <div class="filter-settings">
+                    <div class="form-group">
+                        <label>Max Repeated Words</label>
+                        <input type="number" name="repetition_max_words" value="{{ settings.repetition_max_words }}" min="3" max="50">
+                    </div>
+                    <div class="form-row action-row">
+                        <div class="form-group">
+                            <label>Action</label>
+                            <select name="repetition_action" class="action-select">
+                                <option value="delete" {% if settings.repetition_action == 'delete' %}selected{% endif %}>Delete</option>
+                                <option value="timeout" {% if settings.repetition_action == 'timeout' or not settings.repetition_action %}selected{% endif %}>Timeout</option>
+                                <option value="ban" {% if settings.repetition_action == 'ban' %}selected{% endif %}>Ban</option>
+                            </select>
+                        </div>
+                        <div class="form-group duration-group">
+                            <label>Duration</label>
+                            <select name="repetition_duration" class="duration-select">
+                                <option value="60" {% if settings.repetition_duration == 60 or not settings.repetition_duration %}selected{% endif %}>1 minute</option>
+                                <option value="300" {% if settings.repetition_duration == 300 %}selected{% endif %}>5 minutes</option>
+                                <option value="600" {% if settings.repetition_duration == 600 %}selected{% endif %}>10 minutes</option>
+                                <option value="1800" {% if settings.repetition_duration == 1800 %}selected{% endif %}>30 minutes</option>
+                                <option value="3600" {% if settings.repetition_duration == 3600 %}selected{% endif %}>1 hour</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    
-    <!-- Link Filter -->
-    <div class="card filter-card">
-        <div class="card-header">
-            <h3>Link Filter</h3>
-            <label class="toggle">
-                <input type="checkbox" name="link_enabled" {% if settings.link_enabled %}checked{% endif %}>
-                <span class="toggle-slider"></span>
-            </label>
+</div>
+
+<!-- Spam Filters Section -->
+<div class="filter-section">
+    <h2 class="section-title">Spam Filters</h2>
+    <div class="filters-grid">
+        <!-- Emote Filter -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">😀</span>
+                    <h3>Emote Filter</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="emote_enabled" {% if settings.emote_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Detect emote spam in messages.</p>
+                <div class="filter-settings">
+                    <div class="form-group">
+                        <label>Maximum Emotes</label>
+                        <input type="number" name="emote_max_count" value="{{ settings.emote_max_count }}" min="1" max="50">
+                    </div>
+                    <div class="form-row action-row">
+                        <div class="form-group">
+                            <label>Action</label>
+                            <select name="emote_action" class="action-select">
+                                <option value="delete" {% if settings.emote_action == 'delete' %}selected{% endif %}>Delete</option>
+                                <option value="timeout" {% if settings.emote_action == 'timeout' or not settings.emote_action %}selected{% endif %}>Timeout</option>
+                                <option value="ban" {% if settings.emote_action == 'ban' %}selected{% endif %}>Ban</option>
+                            </select>
+                        </div>
+                        <div class="form-group duration-group">
+                            <label>Duration</label>
+                            <select name="emote_duration" class="duration-select">
+                                <option value="60" {% if settings.emote_duration == 60 or not settings.emote_duration %}selected{% endif %}>1 minute</option>
+                                <option value="300" {% if settings.emote_duration == 300 %}selected{% endif %}>5 minutes</option>
+                                <option value="600" {% if settings.emote_duration == 600 %}selected{% endif %}>10 minutes</option>
+                                <option value="1800" {% if settings.emote_duration == 1800 %}selected{% endif %}>30 minutes</option>
+                                <option value="3600" {% if settings.emote_duration == 3600 %}selected{% endif %}>1 hour</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-            <p class="filter-description">Filter URLs and links in messages.</p>
-            <small>Uses whitelist/blacklist system. Trusted domains like twitch.tv, youtube.com are allowed.</small>
-        </div>
-    </div>
-    
-    <!-- Length Filter -->
-    <div class="card filter-card">
-        <div class="card-header">
-            <h3>Length Filter</h3>
-            <label class="toggle">
-                <input type="checkbox" name="length_enabled" {% if settings.length_enabled %}checked{% endif %}>
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-        <div class="card-body">
-            <p class="filter-description">Limit maximum message length.</p>
-            <div class="form-group">
-                <label>Maximum Characters</label>
-                <input type="number" name="length_max_chars" value="{{ settings.length_max_chars }}" min="100" max="1000">
-                <small>Maximum characters per message</small>
+        
+        <!-- Symbol Filter -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">✳️</span>
+                    <h3>Symbol Filter</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="symbol_enabled" {% if settings.symbol_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Detect excessive symbols and ASCII art.</p>
+                <div class="filter-settings">
+                    <div class="form-group">
+                        <label>Max Symbol %</label>
+                        <input type="number" name="symbol_max_percent" value="{{ settings.symbol_max_percent }}" min="10" max="100">
+                    </div>
+                    <div class="form-row action-row">
+                        <div class="form-group">
+                            <label>Action</label>
+                            <select name="symbol_action" class="action-select">
+                                <option value="delete" {% if settings.symbol_action == 'delete' %}selected{% endif %}>Delete</option>
+                                <option value="timeout" {% if settings.symbol_action == 'timeout' or not settings.symbol_action %}selected{% endif %}>Timeout</option>
+                                <option value="ban" {% if settings.symbol_action == 'ban' %}selected{% endif %}>Ban</option>
+                            </select>
+                        </div>
+                        <div class="form-group duration-group">
+                            <label>Duration</label>
+                            <select name="symbol_duration" class="duration-select">
+                                <option value="60" {% if settings.symbol_duration == 60 or not settings.symbol_duration %}selected{% endif %}>1 minute</option>
+                                <option value="300" {% if settings.symbol_duration == 300 %}selected{% endif %}>5 minutes</option>
+                                <option value="600" {% if settings.symbol_duration == 600 %}selected{% endif %}>10 minutes</option>
+                                <option value="1800" {% if settings.symbol_duration == 1800 %}selected{% endif %}>30 minutes</option>
+                                <option value="3600" {% if settings.symbol_duration == 3600 %}selected{% endif %}>1 hour</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    
-    <!-- Repetition Filter -->
-    <div class="card filter-card">
-        <div class="card-header">
-            <h3>Repetition Filter</h3>
-            <label class="toggle">
-                <input type="checkbox" name="repetition_enabled" {% if settings.repetition_enabled %}checked{% endif %}>
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-        <div class="card-body">
-            <p class="filter-description">Detect repeated words and characters.</p>
-            <div class="form-group">
-                <label>Max Repeated Words</label>
-                <input type="number" name="repetition_max_words" value="{{ settings.repetition_max_words }}" min="3" max="50">
-                <small>Maximum times a word can repeat</small>
+</div>
+
+<!-- Security Filters Section -->
+<div class="filter-section">
+    <h2 class="section-title">Security Filters</h2>
+    <div class="filters-grid">
+        <!-- Link Filter -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">🔗</span>
+                    <h3>Link Filter</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="link_enabled" {% if settings.link_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Filter URLs and links. Configure whitelist/blacklist below.</p>
+                <div class="filter-settings">
+                    <div class="form-row action-row">
+                        <div class="form-group">
+                            <label>Action</label>
+                            <select name="link_action" class="action-select">
+                                <option value="delete" {% if settings.link_action == 'delete' or not settings.link_action %}selected{% endif %}>Delete</option>
+                                <option value="timeout" {% if settings.link_action == 'timeout' %}selected{% endif %}>Timeout</option>
+                                <option value="ban" {% if settings.link_action == 'ban' %}selected{% endif %}>Ban</option>
+                            </select>
+                        </div>
+                        <div class="form-group duration-group">
+                            <label>Duration</label>
+                            <select name="link_duration" class="duration-select">
+                                <option value="60" {% if settings.link_duration == 60 or not settings.link_duration %}selected{% endif %}>1 minute</option>
+                                <option value="300" {% if settings.link_duration == 300 %}selected{% endif %}>5 minutes</option>
+                                <option value="600" {% if settings.link_duration == 600 %}selected{% endif %}>10 minutes</option>
+                                <option value="1800" {% if settings.link_duration == 1800 %}selected{% endif %}>30 minutes</option>
+                                <option value="3600" {% if settings.link_duration == 3600 %}selected{% endif %}>1 hour</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-    
-    <!-- Zalgo Filter -->
-    <div class="card filter-card">
-        <div class="card-header">
-            <h3>Zalgo Filter</h3>
-            <label class="toggle">
-                <input type="checkbox" name="zalgo_enabled" {% if settings.zalgo_enabled %}checked{% endif %}>
-                <span class="toggle-slider"></span>
-            </label>
+        
+        <!-- Zalgo Filter -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">👻</span>
+                    <h3>Zalgo Filter</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="zalgo_enabled" {% if settings.zalgo_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Detect Zalgo text (glitchy combining characters).</p>
+                <div class="filter-settings">
+                    <div class="form-row action-row">
+                        <div class="form-group">
+                            <label>Action</label>
+                            <select name="zalgo_action" class="action-select">
+                                <option value="delete" {% if settings.zalgo_action == 'delete' or not settings.zalgo_action %}selected{% endif %}>Delete</option>
+                                <option value="timeout" {% if settings.zalgo_action == 'timeout' %}selected{% endif %}>Timeout</option>
+                                <option value="ban" {% if settings.zalgo_action == 'ban' %}selected{% endif %}>Ban</option>
+                            </select>
+                        </div>
+                        <div class="form-group duration-group">
+                            <label>Duration</label>
+                            <select name="zalgo_duration" class="duration-select">
+                                <option value="60" {% if settings.zalgo_duration == 60 or not settings.zalgo_duration %}selected{% endif %}>1 minute</option>
+                                <option value="300" {% if settings.zalgo_duration == 300 %}selected{% endif %}>5 minutes</option>
+                                <option value="600" {% if settings.zalgo_duration == 600 %}selected{% endif %}>10 minutes</option>
+                                <option value="1800" {% if settings.zalgo_duration == 1800 %}selected{% endif %}>30 minutes</option>
+                                <option value="3600" {% if settings.zalgo_duration == 3600 %}selected{% endif %}>1 hour</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-            <p class="filter-description">Detect Zalgo text (glitchy combining characters).</p>
-            <small>Zalgo text uses Unicode combining characters to create "corrupted" looking text.</small>
-        </div>
-    </div>
-    
-    <!-- Lookalike Filter -->
-    <div class="card filter-card">
-        <div class="card-header">
-            <h3>Lookalike Filter</h3>
-            <label class="toggle">
-                <input type="checkbox" name="lookalike_enabled" {% if settings.lookalike_enabled %}checked{% endif %}>
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-        <div class="card-body">
-            <p class="filter-description">Detect character substitution attempts.</p>
-            <small>Catches attempts like "fr33 f0ll0w3rs" by normalizing lookalike characters.</small>
+        
+        <!-- Lookalike Filter -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">🎭</span>
+                    <h3>Lookalike Filter</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="lookalike_enabled" {% if settings.lookalike_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Detect character substitution like "fr33 f0ll0w3rs".</p>
+                <div class="filter-settings">
+                    <div class="form-row action-row">
+                        <div class="form-group">
+                            <label>Action</label>
+                            <select name="lookalike_action" class="action-select">
+                                <option value="delete" {% if settings.lookalike_action == 'delete' or not settings.lookalike_action %}selected{% endif %}>Delete</option>
+                                <option value="timeout" {% if settings.lookalike_action == 'timeout' %}selected{% endif %}>Timeout</option>
+                                <option value="ban" {% if settings.lookalike_action == 'ban' %}selected{% endif %}>Ban</option>
+                            </select>
+                        </div>
+                        <div class="form-group duration-group">
+                            <label>Duration</label>
+                            <select name="lookalike_duration" class="duration-select">
+                                <option value="60" {% if settings.lookalike_duration == 60 or not settings.lookalike_duration %}selected{% endif %}>1 minute</option>
+                                <option value="300" {% if settings.lookalike_duration == 300 %}selected{% endif %}>5 minutes</option>
+                                <option value="600" {% if settings.lookalike_duration == 600 %}selected{% endif %}>10 minutes</option>
+                                <option value="1800" {% if settings.lookalike_duration == 1800 %}selected{% endif %}>30 minutes</option>
+                                <option value="3600" {% if settings.lookalike_duration == 3600 %}selected{% endif %}>1 hour</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -161,9 +402,87 @@
 </div>
 </form>
 
+<!-- Link Whitelist/Blacklist Section -->
+<div class="filter-section">
+    <h2 class="section-title">Link Management</h2>
+    <div class="link-lists-container">
+        <!-- Whitelist -->
+        <div class="card link-list-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">✅</span>
+                    <h3>Whitelisted Domains</h3>
+                </div>
+                <span class="list-count">{{ whitelist|length if whitelist else 0 }} domains</span>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Links from these domains will always be allowed.</p>
+                <form method="POST" action="{{ url_for('filters_page') }}" class="add-domain-form">
+                    <input type="hidden" name="action" value="add_link">
+                    <input type="hidden" name="list_type" value="whitelist">
+                    <div class="input-group">
+                        <input type="text" name="domain" placeholder="example.com" required>
+                        <button type="submit" class="btn btn-success">Add</button>
+                    </div>
+                </form>
+                <div class="domain-list" id="whitelistDomains">
+                    {% if whitelist %}
+                        {% for item in whitelist %}
+                        <div class="domain-item" data-id="{{ item.id }}">
+                            <span class="domain-name">{{ item.domain }}</span>
+                            <button type="button" class="btn-icon btn-delete" onclick="removeDomain({{ item.id }}, 'whitelist')">×</button>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-list">No whitelisted domains yet</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Blacklist -->
+        <div class="card link-list-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">🚫</span>
+                    <h3>Blacklisted Domains</h3>
+                </div>
+                <span class="list-count">{{ blacklist|length if blacklist else 0 }} domains</span>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Links from these domains will always be blocked.</p>
+                <form method="POST" action="{{ url_for('filters_page') }}" class="add-domain-form">
+                    <input type="hidden" name="action" value="add_link">
+                    <input type="hidden" name="list_type" value="blacklist">
+                    <div class="input-group">
+                        <input type="text" name="domain" placeholder="spam-site.com" required>
+                        <button type="submit" class="btn btn-danger">Add</button>
+                    </div>
+                </form>
+                <div class="domain-list" id="blacklistDomains">
+                    {% if blacklist %}
+                        {% for item in blacklist %}
+                        <div class="domain-item" data-id="{{ item.id }}">
+                            <span class="domain-name">{{ item.domain }}</span>
+                            <button type="button" class="btn-icon btn-delete" onclick="removeDomain({{ item.id }}, 'blacklist')">×</button>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-list">No blacklisted domains yet</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test Message Section -->
 <div class="card">
     <div class="card-header">
-        <h3>Test Message</h3>
+        <div class="filter-title">
+            <span class="filter-icon">🧪</span>
+            <h3>Test Message</h3>
+        </div>
     </div>
     <div class="card-body">
         <div class="form-group">
@@ -176,60 +495,124 @@
 </div>
 
 <style>
-.filters-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-.filter-card .card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.filter-description {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    margin-bottom: 1rem;
-}
-.form-actions {
-    text-align: center;
-    margin: 2rem 0;
-}
-.test-result {
-    margin-top: 1rem;
-    padding: 1rem;
-    border-radius: 8px;
-    background: var(--bg-secondary);
-}
-.test-result.pass {
-    border-left: 4px solid var(--success);
-}
-.test-result.fail {
-    border-left: 4px solid var(--danger);
-}
+.filter-section { margin-bottom: 2rem; }
+.section-title { font-size: 1.25rem; font-weight: 600; color: var(--text-primary); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border-color); }
+.filters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
+.filter-card { transition: transform 0.2s, box-shadow 0.2s; }
+.filter-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
+.filter-card .card-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; }
+.filter-title { display: flex; align-items: center; gap: 0.5rem; }
+.filter-icon { font-size: 1.25rem; }
+.filter-title h3 { margin: 0; font-size: 1rem; }
+.filter-description { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem; }
+.filter-settings { display: flex; flex-direction: column; gap: 0.75rem; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.action-row { padding-top: 0.75rem; border-top: 1px solid var(--border-color); margin-top: 0.5rem; }
+.form-group label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.25rem; }
+.form-group input, .form-group select { width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; }
+.action-select { background-color: var(--bg-secondary); }
+.sensitivity-card { margin-bottom: 1.5rem; }
+.sensitivity-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.sensitivity-btn { display: flex; flex-direction: column; align-items: center; padding: 1rem; border: 2px solid var(--border-color); border-radius: 12px; background: var(--bg-secondary); cursor: pointer; transition: all 0.2s; }
+.sensitivity-btn:hover { border-color: var(--accent); background: var(--bg-tertiary); }
+.sensitivity-btn.active { border-color: var(--accent); background: rgba(145, 71, 255, 0.1); }
+.sensitivity-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+.sensitivity-label { font-weight: 600; color: var(--text-primary); }
+.sensitivity-desc { font-size: 0.75rem; color: var(--text-secondary); text-align: center; margin-top: 0.25rem; }
+.link-lists-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1rem; }
+.link-list-card .card-header { display: flex; justify-content: space-between; align-items: center; }
+.list-count { font-size: 0.85rem; color: var(--text-secondary); background: var(--bg-tertiary); padding: 0.25rem 0.75rem; border-radius: 12px; }
+.add-domain-form { margin-bottom: 1rem; }
+.input-group { display: flex; gap: 0.5rem; }
+.input-group input { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
+.domain-list { max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); }
+.domain-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border-color); }
+.domain-item:last-child { border-bottom: none; }
+.domain-name { font-family: monospace; font-size: 0.9rem; }
+.btn-icon { width: 24px; height: 24px; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; transition: all 0.2s; }
+.btn-delete { background: var(--danger); color: white; }
+.btn-delete:hover { background: #c0392b; }
+.empty-list { padding: 1rem; text-align: center; color: var(--text-secondary); font-style: italic; }
+.form-actions { text-align: center; margin: 2rem 0; }
+.test-result { margin-top: 1rem; padding: 1rem; border-radius: 8px; background: var(--bg-secondary); }
+.test-result.pass { border-left: 4px solid var(--success); }
+.test-result.fail { border-left: 4px solid var(--danger); }
+.duration-group { transition: opacity 0.2s; }
+@media (max-width: 768px) { .filters-grid { grid-template-columns: 1fr; } .sensitivity-options { grid-template-columns: 1fr; } .link-lists-container { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
 </style>
 
 <script>
+document.querySelectorAll(".sensitivity-btn").forEach(btn => {
+    btn.addEventListener("click", function() {
+        const level = this.dataset.level;
+        document.querySelectorAll(".sensitivity-btn").forEach(b => b.classList.remove("active"));
+        this.classList.add("active");
+        document.getElementById("globalSensitivity").value = level;
+        fetch("/api/filters/sensitivity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sensitivity: level })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.preset) {
+                const p = data.preset;
+                document.querySelector("[name=caps_max_percent]").value = p.caps_max_percent;
+                document.querySelector("[name=caps_min_length]").value = p.caps_min_length;
+                document.querySelector("[name=emote_max_count]").value = p.emote_max_count;
+                document.querySelector("[name=symbol_max_percent]").value = p.symbol_max_percent;
+                document.querySelector("[name=length_max_chars]").value = p.length_max_chars;
+                document.querySelector("[name=repetition_max_words]").value = p.repetition_max_words;
+            }
+        });
+    });
+});
+
+document.querySelectorAll(".action-select").forEach(select => {
+    select.addEventListener("change", function() {
+        const durationGroup = this.closest(".action-row").querySelector(".duration-group");
+        durationGroup.style.opacity = this.value === "delete" ? "0.5" : "1";
+    });
+    select.dispatchEvent(new Event("change"));
+});
+
+function removeDomain(id, listType) {
+    if (!confirm("Remove this domain?")) return;
+    fetch("/api/link-list/" + id, { method: "DELETE" })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const item = document.querySelector('.domain-item[data-id="' + id + '"]');
+            if (item) {
+                item.remove();
+                const listId = listType === "whitelist" ? "whitelistDomains" : "blacklistDomains";
+                const list = document.getElementById(listId);
+                const count = list.querySelectorAll(".domain-item").length;
+                list.closest(".card").querySelector(".list-count").textContent = count + " domains";
+                if (count === 0) list.innerHTML = '<div class="empty-list">No ' + listType + 'ed domains yet</div>';
+            }
+        }
+    });
+}
+
 function testMessage() {
-    const message = document.getElementById('testMessage').value;
+    const message = document.getElementById("testMessage").value;
     if (!message) return;
-    
-    fetch('/api/test-filter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+    fetch("/api/test-filter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message })
     })
     .then(r => r.json())
     .then(data => {
-        const result = document.getElementById('testResult');
-        result.style.display = 'block';
-        if (data.action === 'allow') {
-            result.className = 'test-result pass';
-            result.innerHTML = `<strong>PASS</strong> - Message would be allowed (Score: ${data.score})`;
+        const result = document.getElementById("testResult");
+        result.style.display = "block";
+        if (data.action === "allow") {
+            result.className = "test-result pass";
+            result.innerHTML = "<strong>✅ PASS</strong> - Message would be allowed (Score: " + data.score + ")";
         } else {
-            result.className = 'test-result fail';
-            result.innerHTML = `<strong>${data.action.toUpperCase()}</strong> - Score: ${data.score}<br>Reasons: ${data.reasons.join(', ')}`;
+            result.className = "test-result fail";
+            result.innerHTML = "<strong>❌ " + data.action.toUpperCase() + "</strong> - Score: " + data.score + "<br>Reasons: " + data.reasons.join(", ");
         }
     });
 }

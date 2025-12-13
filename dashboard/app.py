@@ -564,80 +564,284 @@ def loyalty_page():
 @app.route("/filters", methods=["GET", "POST"])
 @login_required
 def filters_page():
-    """Filters page."""
+    """Filters page with per-filter actions, durations, and link lists."""
     channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
     
     if request.method == "POST":
+        action = request.form.get("action", "save_filters")
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            INSERT INTO filter_settings 
-            (channel, caps_enabled, caps_min_length, caps_max_percent, emote_enabled, emote_max_count,
-             symbol_enabled, symbol_max_percent, link_enabled, length_enabled, length_max_chars,
-             repetition_enabled, repetition_max_words, zalgo_enabled, lookalike_enabled)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(channel) DO UPDATE SET
-                caps_enabled = excluded.caps_enabled,
-                caps_min_length = excluded.caps_min_length,
-                caps_max_percent = excluded.caps_max_percent,
-                emote_enabled = excluded.emote_enabled,
-                emote_max_count = excluded.emote_max_count,
-                symbol_enabled = excluded.symbol_enabled,
-                symbol_max_percent = excluded.symbol_max_percent,
-                link_enabled = excluded.link_enabled,
-                length_enabled = excluded.length_enabled,
-                length_max_chars = excluded.length_max_chars,
-                repetition_enabled = excluded.repetition_enabled,
-                repetition_max_words = excluded.repetition_max_words,
-                zalgo_enabled = excluded.zalgo_enabled,
-                lookalike_enabled = excluded.lookalike_enabled
-        """, (
-            channel,
-            request.form.get("caps_enabled") == "on",
-            int(request.form.get("caps_min_length", 10)),
-            int(request.form.get("caps_max_percent", 70)),
-            request.form.get("emote_enabled") == "on",
-            int(request.form.get("emote_max_count", 15)),
-            request.form.get("symbol_enabled") == "on",
-            int(request.form.get("symbol_max_percent", 50)),
-            request.form.get("link_enabled") == "on",
-            request.form.get("length_enabled") == "on",
-            int(request.form.get("length_max_chars", 500)),
-            request.form.get("repetition_enabled") == "on",
-            int(request.form.get("repetition_max_words", 10)),
-            request.form.get("zalgo_enabled") == "on",
-            request.form.get("lookalike_enabled") == "on"
-        ))
-        conn.commit()
-        conn.close()
+        if action == "save_filters":
+            # Save all filter settings including actions and durations
+            cursor.execute("""
+                INSERT INTO filter_settings 
+                (channel, global_sensitivity,
+                 caps_enabled, caps_min_length, caps_max_percent, caps_action, caps_duration,
+                 emote_enabled, emote_max_count, emote_action, emote_duration,
+                 symbol_enabled, symbol_max_percent, symbol_action, symbol_duration,
+                 link_enabled, link_action, link_duration,
+                 length_enabled, length_max_chars, length_action, length_duration,
+                 repetition_enabled, repetition_max_words, repetition_action, repetition_duration,
+                 zalgo_enabled, zalgo_action, zalgo_duration,
+                 lookalike_enabled, lookalike_action, lookalike_duration)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(channel) DO UPDATE SET
+                    global_sensitivity = excluded.global_sensitivity,
+                    caps_enabled = excluded.caps_enabled,
+                    caps_min_length = excluded.caps_min_length,
+                    caps_max_percent = excluded.caps_max_percent,
+                    caps_action = excluded.caps_action,
+                    caps_duration = excluded.caps_duration,
+                    emote_enabled = excluded.emote_enabled,
+                    emote_max_count = excluded.emote_max_count,
+                    emote_action = excluded.emote_action,
+                    emote_duration = excluded.emote_duration,
+                    symbol_enabled = excluded.symbol_enabled,
+                    symbol_max_percent = excluded.symbol_max_percent,
+                    symbol_action = excluded.symbol_action,
+                    symbol_duration = excluded.symbol_duration,
+                    link_enabled = excluded.link_enabled,
+                    link_action = excluded.link_action,
+                    link_duration = excluded.link_duration,
+                    length_enabled = excluded.length_enabled,
+                    length_max_chars = excluded.length_max_chars,
+                    length_action = excluded.length_action,
+                    length_duration = excluded.length_duration,
+                    repetition_enabled = excluded.repetition_enabled,
+                    repetition_max_words = excluded.repetition_max_words,
+                    repetition_action = excluded.repetition_action,
+                    repetition_duration = excluded.repetition_duration,
+                    zalgo_enabled = excluded.zalgo_enabled,
+                    zalgo_action = excluded.zalgo_action,
+                    zalgo_duration = excluded.zalgo_duration,
+                    lookalike_enabled = excluded.lookalike_enabled,
+                    lookalike_action = excluded.lookalike_action,
+                    lookalike_duration = excluded.lookalike_duration
+            """, (
+                channel,
+                request.form.get("global_sensitivity", "medium"),
+                # Caps filter
+                request.form.get("caps_enabled") == "on",
+                int(request.form.get("caps_min_length", 10)),
+                int(request.form.get("caps_max_percent", 70)),
+                request.form.get("caps_action", "timeout"),
+                int(request.form.get("caps_duration", 60)),
+                # Emote filter
+                request.form.get("emote_enabled") == "on",
+                int(request.form.get("emote_max_count", 15)),
+                request.form.get("emote_action", "timeout"),
+                int(request.form.get("emote_duration", 60)),
+                # Symbol filter
+                request.form.get("symbol_enabled") == "on",
+                int(request.form.get("symbol_max_percent", 50)),
+                request.form.get("symbol_action", "timeout"),
+                int(request.form.get("symbol_duration", 60)),
+                # Link filter
+                request.form.get("link_enabled") == "on",
+                request.form.get("link_action", "delete"),
+                int(request.form.get("link_duration", 60)),
+                # Length filter
+                request.form.get("length_enabled") == "on",
+                int(request.form.get("length_max_chars", 500)),
+                request.form.get("length_action", "delete"),
+                int(request.form.get("length_duration", 60)),
+                # Repetition filter
+                request.form.get("repetition_enabled") == "on",
+                int(request.form.get("repetition_max_words", 10)),
+                request.form.get("repetition_action", "timeout"),
+                int(request.form.get("repetition_duration", 60)),
+                # Zalgo filter
+                request.form.get("zalgo_enabled") == "on",
+                request.form.get("zalgo_action", "delete"),
+                int(request.form.get("zalgo_duration", 60)),
+                # Lookalike filter
+                request.form.get("lookalike_enabled") == "on",
+                request.form.get("lookalike_action", "delete"),
+                int(request.form.get("lookalike_duration", 60))
+            ))
+            conn.commit()
+            flash("Filter settings saved!", "success")
         
-        flash("Filter settings saved!", "success")
+        elif action == "add_link":
+            domain = request.form.get("domain", "").strip().lower()
+            list_type = request.form.get("list_type", "whitelist")
+            if domain:
+                # Remove protocol and path if present
+                domain = domain.replace("https://", "").replace("http://", "").split("/")[0]
+                try:
+                    cursor.execute("""
+                        INSERT INTO link_lists (channel, domain, list_type, added_by)
+                        VALUES (?, ?, ?, ?)
+                    """, (channel.lower(), domain, list_type, "dashboard"))
+                    conn.commit()
+                    flash(f"Added {domain} to {list_type}!", "success")
+                except Exception as e:
+                    flash(f"Domain already exists in {list_type}!", "error")
+        
+        elif action == "remove_link":
+            link_id = request.form.get("link_id")
+            if link_id:
+                cursor.execute("DELETE FROM link_lists WHERE id = ? AND channel = ?", (link_id, channel.lower()))
+                conn.commit()
+                flash("Domain removed!", "success")
+        
+        conn.close()
         return redirect(url_for("filters_page"))
     
+    # GET request - load settings and link lists
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # Get filter settings
     cursor.execute("SELECT * FROM filter_settings WHERE channel = ?", (channel,))
     row = cursor.fetchone()
     settings = dict(row) if row else {
-        "caps_enabled": True,
-        "caps_min_length": 10,
-        "caps_max_percent": 70,
-        "emote_enabled": True,
-        "emote_max_count": 15,
-        "symbol_enabled": True,
-        "symbol_max_percent": 50,
-        "link_enabled": True,
-        "length_enabled": True,
-        "length_max_chars": 500,
-        "repetition_enabled": True,
-        "repetition_max_words": 10,
-        "zalgo_enabled": True,
-        "lookalike_enabled": True
+        "global_sensitivity": "medium",
+        "caps_enabled": True, "caps_min_length": 10, "caps_max_percent": 70, "caps_action": "timeout", "caps_duration": 60,
+        "emote_enabled": True, "emote_max_count": 15, "emote_action": "timeout", "emote_duration": 60,
+        "symbol_enabled": True, "symbol_max_percent": 50, "symbol_action": "timeout", "symbol_duration": 60,
+        "link_enabled": True, "link_action": "delete", "link_duration": 60,
+        "length_enabled": True, "length_max_chars": 500, "length_action": "delete", "length_duration": 60,
+        "repetition_enabled": True, "repetition_max_words": 10, "repetition_action": "timeout", "repetition_duration": 60,
+        "zalgo_enabled": True, "zalgo_action": "delete", "zalgo_duration": 60,
+        "lookalike_enabled": True, "lookalike_action": "delete", "lookalike_duration": 60
     }
+    
+    # Get link whitelist
+    cursor.execute("SELECT * FROM link_lists WHERE channel = ? AND list_type = 'whitelist' ORDER BY domain", (channel.lower(),))
+    whitelist = [dict(row) for row in cursor.fetchall()]
+    
+    # Get link blacklist
+    cursor.execute("SELECT * FROM link_lists WHERE channel = ? AND list_type = 'blacklist' ORDER BY domain", (channel.lower(),))
+    blacklist = [dict(row) for row in cursor.fetchall()]
+    
     conn.close()
     
-    return render_template("filters.html", settings=settings)
+    return render_template("filters.html", settings=settings, whitelist=whitelist, blacklist=blacklist)
+
+@app.route("/filters/banned-words", methods=["GET", "POST"])
+@login_required
+def banned_words_page():
+    """Banned words management page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    if request.method == "POST":
+        action = request.form.get("action")
+        
+        if action == "add":
+            word = request.form.get("word", "").strip()
+            if word:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                try:
+                    cursor.execute("""
+                        INSERT INTO banned_words (channel, word, is_regex, action, duration, added_by)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        channel.lower(),
+                        word,
+                        request.form.get("is_regex") == "on",
+                        request.form.get("ban_action", "delete"),
+                        int(request.form.get("duration", 600)),
+                        "dashboard"
+                    ))
+                    conn.commit()
+                    flash(f"Added banned word: {word[:30]}", "success")
+                except sqlite3.IntegrityError:
+                    flash("Word already exists!", "error")
+                conn.close()
+        
+        elif action == "delete":
+            word_id = request.form.get("word_id")
+            if word_id:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM banned_words WHERE id = ? AND channel = ?", (word_id, channel.lower()))
+                conn.commit()
+                conn.close()
+                flash("Banned word deleted.", "success")
+        
+        elif action == "toggle":
+            word_id = request.form.get("word_id")
+            if word_id:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("UPDATE banned_words SET enabled = NOT enabled WHERE id = ? AND channel = ?", (word_id, channel.lower()))
+                conn.commit()
+                conn.close()
+                flash("Banned word toggled.", "success")
+        
+        elif action == "import":
+            file = request.files.get("import_file")
+            if file:
+                try:
+                    content = file.read().decode("utf-8")
+                    if file.filename.endswith(".json"):
+                        import json
+                        words = json.loads(content)
+                    else:
+                        words = [{"word": w.strip()} for w in content.split("\n") if w.strip()]
+                    
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    added = 0
+                    for w in words:
+                        try:
+                            cursor.execute("""
+                                INSERT INTO banned_words (channel, word, is_regex, action, duration, added_by)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (
+                                channel.lower(),
+                                w.get("word", w) if isinstance(w, dict) else w,
+                                w.get("is_regex", False) if isinstance(w, dict) else False,
+                                w.get("action", "delete") if isinstance(w, dict) else "delete",
+                                w.get("duration", 600) if isinstance(w, dict) else 600,
+                                "import"
+                            ))
+                            added += 1
+                        except sqlite3.IntegrityError:
+                            pass
+                    conn.commit()
+                    conn.close()
+                    flash(f"Imported {added} words.", "success")
+                except Exception as e:
+                    flash(f"Import error: {str(e)}", "error")
+        
+        return redirect(url_for("banned_words_page"))
+    
+    # GET request
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM banned_words WHERE channel = ? ORDER BY added_at DESC", (channel.lower(),))
+    words = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    
+    return render_template("banned_words.html", words=words)
+
+
+@app.route("/filters/banned-words/export")
+@login_required
+def banned_words_export():
+    """Export banned words as JSON."""
+    import json
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT word, is_regex, action, duration FROM banned_words WHERE channel = ?", (channel.lower(),))
+    words = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    
+    response = app.response_class(
+        response=json.dumps(words, indent=2),
+        status=200,
+        mimetype='application/json'
+    )
+    response.headers["Content-Disposition"] = "attachment; filename=banned_words.json"
+    return response
+
+
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -724,8 +928,14 @@ def credentials():
         "owner": get_env_value("BOT_OWNER"),
     }
     
-    return render_template("credentials.html", credentials=current_creds)
-
+    # Real values for toggle (only sent to authenticated users)
+    real_creds = {
+        "client_id": get_env_value("TWITCH_CLIENT_ID"),
+        "client_secret": get_env_value("TWITCH_CLIENT_SECRET"),
+        "oauth_token": get_env_value("TWITCH_OAUTH_TOKEN"),
+    }
+    
+    return render_template("credentials.html", credentials=current_creds, real_credentials=real_creds)
 
 @app.route("/modlog")
 @login_required
@@ -1040,6 +1250,136 @@ def get_user_history(user_id: str):
         actions = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return jsonify({"success": True, "actions": actions})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+
+@app.route("/api/link-list", methods=["POST"])
+@login_required
+def add_link_to_list():
+    """Add a domain to whitelist or blacklist."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        data = request.get_json()
+        domain = data.get("domain", "").strip().lower()
+        list_type = data.get("list_type", "whitelist")
+        
+        if not domain:
+            return jsonify({"success": False, "error": "Domain is required"}), 400
+        
+        # Clean domain
+        domain = domain.replace("https://", "").replace("http://", "").split("/")[0]
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO link_lists (channel, domain, list_type, added_by)
+                VALUES (?, ?, ?, ?)
+            """, (channel.lower(), domain, list_type, "dashboard"))
+            conn.commit()
+            link_id = cursor.lastrowid
+            conn.close()
+            return jsonify({"success": True, "id": link_id, "domain": domain, "list_type": list_type})
+        except Exception as e:
+            conn.close()
+            return jsonify({"success": False, "error": "Domain already exists"}), 409
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/link-list/<int:link_id>", methods=["DELETE"])
+@login_required
+def remove_link_from_list(link_id: int):
+    """Remove a domain from whitelist or blacklist."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM link_lists WHERE id = ? AND channel = ?", (link_id, channel.lower()))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/link-list")
+@login_required
+def get_link_lists():
+    """Get all whitelisted and blacklisted domains."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM link_lists WHERE channel = ? AND list_type = 'whitelist' ORDER BY domain", (channel.lower(),))
+        whitelist = [dict(row) for row in cursor.fetchall()]
+        
+        cursor.execute("SELECT * FROM link_lists WHERE channel = ? AND list_type = 'blacklist' ORDER BY domain", (channel.lower(),))
+        blacklist = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        return jsonify({"success": True, "whitelist": whitelist, "blacklist": blacklist})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/filters/sensitivity", methods=["POST"])
+@login_required
+def set_filter_sensitivity():
+    """Apply sensitivity preset to all filters."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        data = request.get_json()
+        sensitivity = data.get("sensitivity", "medium")
+        
+        # Define presets
+        presets = {
+            "low": {
+                "caps_max_percent": 90, "caps_min_length": 15,
+                "emote_max_count": 25, "symbol_max_percent": 70,
+                "length_max_chars": 750, "repetition_max_words": 15
+            },
+            "medium": {
+                "caps_max_percent": 70, "caps_min_length": 10,
+                "emote_max_count": 15, "symbol_max_percent": 50,
+                "length_max_chars": 500, "repetition_max_words": 10
+            },
+            "high": {
+                "caps_max_percent": 50, "caps_min_length": 8,
+                "emote_max_count": 8, "symbol_max_percent": 30,
+                "length_max_chars": 300, "repetition_max_words": 5
+            }
+        }
+        
+        if sensitivity not in presets:
+            return jsonify({"success": False, "error": "Invalid sensitivity level"}), 400
+        
+        preset = presets[sensitivity]
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE filter_settings SET
+                global_sensitivity = ?,
+                caps_max_percent = ?, caps_min_length = ?,
+                emote_max_count = ?, symbol_max_percent = ?,
+                length_max_chars = ?, repetition_max_words = ?
+            WHERE channel = ?
+        """, (
+            sensitivity,
+            preset["caps_max_percent"], preset["caps_min_length"],
+            preset["emote_max_count"], preset["symbol_max_percent"],
+            preset["length_max_chars"], preset["repetition_max_words"],
+            channel
+        ))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"success": True, "preset": preset, "sensitivity": sensitivity})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -1701,6 +2041,562 @@ def remove_blacklist(item_id: int):
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+
+# ==================== Queue Management Routes ====================
+
+def get_queue_settings_from_db(channel: str) -> dict:
+    """Get queue settings from database."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM queue_settings WHERE channel = ? AND queue_name = 'default'
+        """, (channel.lower(),))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                "default_max_size": row["max_size"],
+                "default_open": bool(row["is_open"]),
+                "sub_priority": bool(row["sub_priority"])
+            }
+    except Exception as e:
+        app.logger.error(f"Error getting queue settings: {e}")
+    
+    return {
+        "default_max_size": 50,
+        "default_open": False,
+        "sub_priority": False
+    }
+
+
+def get_all_queues(channel: str) -> list[dict]:
+    """Get all queues with their entries for a channel."""
+    queues = []
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get all queue settings
+        cursor.execute("""
+            SELECT DISTINCT queue_name, is_open, max_size, sub_priority
+            FROM queue_settings
+            WHERE channel = ?
+        """, (channel.lower(),))
+        
+        queue_settings = {row["queue_name"]: dict(row) for row in cursor.fetchall()}
+        
+        # Get all unique queue names from entries too
+        cursor.execute("""
+            SELECT DISTINCT queue_name FROM viewer_queue WHERE channel = ?
+        """, (channel.lower(),))
+        
+        for row in cursor.fetchall():
+            if row["queue_name"] not in queue_settings:
+                queue_settings[row["queue_name"]] = {
+                    "queue_name": row["queue_name"],
+                    "is_open": False,
+                    "max_size": 50,
+                    "sub_priority": False
+                }
+        
+        # Build queue data with entries
+        for queue_name, settings in queue_settings.items():
+            # Get entries (not picked)
+            order_by = "is_subscriber DESC, joined_at ASC" if settings.get("sub_priority") else "joined_at ASC"
+            cursor.execute(f"""
+                SELECT user_id, username, is_subscriber, joined_at
+                FROM viewer_queue
+                WHERE channel = ? AND queue_name = ? AND picked = FALSE
+                ORDER BY {order_by}
+            """, (channel.lower(), queue_name))
+            entries = [dict(row) for row in cursor.fetchall()]
+            
+            # Get picked count
+            cursor.execute("""
+                SELECT COUNT(*) as count FROM viewer_queue
+                WHERE channel = ? AND queue_name = ? AND picked = TRUE
+            """, (channel.lower(), queue_name))
+            picked_count = cursor.fetchone()["count"]
+            
+            queues.append({
+                "queue_name": queue_name,
+                "is_open": settings.get("is_open", False),
+                "max_size": settings.get("max_size", 50),
+                "sub_priority": settings.get("sub_priority", False),
+                "entries": entries,
+                "entry_count": len(entries),
+                "picked_count": picked_count
+            })
+        
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Error getting queues: {e}")
+    
+    return sorted(queues, key=lambda x: x["queue_name"])
+
+
+def get_queue_history(channel: str, limit: int = 20) -> list[dict]:
+    """Get recent queue activity."""
+    history = []
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get recently picked users
+        cursor.execute("""
+            SELECT queue_name, username, picked_at as timestamp, 'picked' as action, 'System' as performed_by
+            FROM viewer_queue
+            WHERE channel = ? AND picked = TRUE AND picked_at IS NOT NULL
+            ORDER BY picked_at DESC
+            LIMIT ?
+        """, (channel.lower(), limit))
+        
+        history = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Error getting queue history: {e}")
+    
+    return history
+
+
+@app.route("/queue-management")
+@login_required
+def queue_management():
+    """Queue management page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    settings = get_queue_settings_from_db(channel)
+    queues = get_all_queues(channel)
+    history = get_queue_history(channel)
+    
+    return render_template(
+        "queue_management.html",
+        settings=settings,
+        queues=queues,
+        history=history
+    )
+
+
+@app.route("/queue-management/settings", methods=["POST"])
+@login_required
+def queue_management_settings():
+    """Save queue settings."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        default_max_size = int(request.form.get("default_max_size", 50))
+        default_open = request.form.get("default_open") == "open"
+        sub_priority = request.form.get("sub_priority") == "on"
+        
+        cursor.execute("""
+            INSERT INTO queue_settings (channel, queue_name, is_open, max_size, sub_priority)
+            VALUES (?, 'default', ?, ?, ?)
+            ON CONFLICT(channel, queue_name) DO UPDATE SET
+                is_open = excluded.is_open,
+                max_size = excluded.max_size,
+                sub_priority = excluded.sub_priority
+        """, (channel.lower(), default_open, default_max_size, sub_priority))
+        
+        conn.commit()
+        conn.close()
+        flash("Queue settings saved!", "success")
+    except Exception as e:
+        app.logger.error(f"Error saving queue settings: {e}")
+        flash(f"Error saving settings: {e}", "error")
+    
+    return redirect(url_for("queue_management"))
+
+
+@app.route("/queue-management/action", methods=["POST"])
+@login_required
+def queue_management_action():
+    """Handle queue actions (open, close, clear, pick)."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    action = request.form.get("action")
+    queue_name = request.form.get("queue_name", "default")
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if action == "create":
+            max_size = int(request.form.get("max_size", 50))
+            open_immediately = request.form.get("open_immediately") == "on"
+            
+            cursor.execute("""
+                INSERT INTO queue_settings (channel, queue_name, is_open, max_size, sub_priority)
+                VALUES (?, ?, ?, ?, FALSE)
+                ON CONFLICT(channel, queue_name) DO UPDATE SET
+                    is_open = excluded.is_open,
+                    max_size = excluded.max_size
+            """, (channel.lower(), queue_name.lower(), open_immediately, max_size))
+            conn.commit()
+            conn.close()
+            flash(f"Queue '{queue_name}' created!", "success")
+            return redirect(url_for("queue_management"))
+        
+        elif action == "open":
+            cursor.execute("""
+                UPDATE queue_settings SET is_open = TRUE
+                WHERE channel = ? AND queue_name = ?
+            """, (channel.lower(), queue_name.lower()))
+            
+            # Create settings if they don't exist
+            if cursor.rowcount == 0:
+                cursor.execute("""
+                    INSERT INTO queue_settings (channel, queue_name, is_open, max_size, sub_priority)
+                    VALUES (?, ?, TRUE, 50, FALSE)
+                """, (channel.lower(), queue_name.lower()))
+            
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": f"Queue '{queue_name}' opened"})
+        
+        elif action == "close":
+            cursor.execute("""
+                UPDATE queue_settings SET is_open = FALSE
+                WHERE channel = ? AND queue_name = ?
+            """, (channel.lower(), queue_name.lower()))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": f"Queue '{queue_name}' closed"})
+        
+        elif action == "clear":
+            cursor.execute("""
+                DELETE FROM viewer_queue
+                WHERE channel = ? AND queue_name = ?
+            """, (channel.lower(), queue_name.lower()))
+            cleared = cursor.rowcount
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": f"Cleared {cleared} entries", "cleared": cleared})
+        
+        elif action == "next":
+            # Get queue settings for ordering
+            cursor.execute("""
+                SELECT sub_priority FROM queue_settings
+                WHERE channel = ? AND queue_name = ?
+            """, (channel.lower(), queue_name.lower()))
+            row = cursor.fetchone()
+            sub_priority = bool(row["sub_priority"]) if row else False
+            
+            order_by = "is_subscriber DESC, joined_at ASC" if sub_priority else "joined_at ASC"
+            
+            cursor.execute(f"""
+                SELECT id, user_id, username, is_subscriber
+                FROM viewer_queue
+                WHERE channel = ? AND queue_name = ? AND picked = FALSE
+                ORDER BY {order_by}
+                LIMIT 1
+            """, (channel.lower(), queue_name.lower()))
+            
+            entry = cursor.fetchone()
+            if entry:
+                cursor.execute("""
+                    UPDATE viewer_queue SET picked = TRUE, picked_at = datetime('now')
+                    WHERE id = ?
+                """, (entry["id"],))
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "success": True,
+                    "picked": {
+                        "user_id": entry["user_id"],
+                        "username": entry["username"],
+                        "is_subscriber": bool(entry["is_subscriber"])
+                    }
+                })
+            
+            conn.close()
+            return jsonify({"success": True, "picked": None, "message": "Queue is empty"})
+        
+        elif action == "random":
+            import random
+            
+            cursor.execute("""
+                SELECT id, user_id, username, is_subscriber
+                FROM viewer_queue
+                WHERE channel = ? AND queue_name = ? AND picked = FALSE
+            """, (channel.lower(), queue_name.lower()))
+            
+            entries = cursor.fetchall()
+            if entries:
+                entry = random.choice(entries)
+                cursor.execute("""
+                    UPDATE viewer_queue SET picked = TRUE, picked_at = datetime('now')
+                    WHERE id = ?
+                """, (entry["id"],))
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "success": True,
+                    "picked": {
+                        "user_id": entry["user_id"],
+                        "username": entry["username"],
+                        "is_subscriber": bool(entry["is_subscriber"])
+                    }
+                })
+            
+            conn.close()
+            return jsonify({"success": True, "picked": None, "message": "Queue is empty"})
+        
+        conn.close()
+        return jsonify({"success": False, "error": "Unknown action"})
+        
+    except Exception as e:
+        app.logger.error(f"Error performing queue action: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/queue-management/data")
+@login_required
+def queue_management_data():
+    """Get queue data for AJAX refresh."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    try:
+        queues = get_all_queues(channel)
+        return jsonify({"success": True, "queues": queues})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+# ==================== Alerts Settings Routes ====================
+
+@app.route("/alerts-settings", methods=["GET", "POST"])
+@login_required
+def alerts_settings():
+    """Chat alerts settings page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Ensure alert_settings table has all columns we need
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS alert_settings (
+            channel TEXT PRIMARY KEY,
+            alerts_enabled BOOLEAN DEFAULT TRUE,
+            alert_cooldown INTEGER DEFAULT 5,
+            follow_enabled BOOLEAN DEFAULT TRUE,
+            follow_message TEXT DEFAULT 'Welcome @$(user) to the community! 🎉',
+            sub_enabled BOOLEAN DEFAULT TRUE,
+            sub_message TEXT DEFAULT 'Thanks @$(user) for subscribing! 💜',
+            resub_enabled BOOLEAN DEFAULT TRUE,
+            resub_message TEXT DEFAULT 'Thanks @$(user) for $(months) months! 💜',
+            giftsub_enabled BOOLEAN DEFAULT TRUE,
+            giftsub_message TEXT DEFAULT '@$(user) gifted a sub to @$(recipient)! 🎁',
+            raid_enabled BOOLEAN DEFAULT TRUE,
+            raid_message TEXT DEFAULT 'Welcome $(count) raiders from @$(user)! 🎊',
+            bits_enabled BOOLEAN DEFAULT TRUE,
+            bits_message TEXT DEFAULT 'Thanks @$(user) for $(bits) bits! 💎',
+            bits_minimum INTEGER DEFAULT 1
+        )
+    """)
+    conn.commit()
+    
+    if request.method == "POST":
+        action = request.form.get("action")
+        
+        if action == "global_settings":
+            cursor.execute("""
+                INSERT INTO alert_settings (channel, alerts_enabled, alert_cooldown)
+                VALUES (?, ?, ?)
+                ON CONFLICT(channel) DO UPDATE SET
+                    alerts_enabled = excluded.alerts_enabled,
+                    alert_cooldown = excluded.alert_cooldown
+            """, (
+                channel,
+                request.form.get("alerts_enabled") == "on",
+                int(request.form.get("alert_cooldown", 5))
+            ))
+            conn.commit()
+            flash("Global settings saved!", "success")
+        
+        elif action == "save_alerts":
+            cursor.execute("""
+                INSERT INTO alert_settings (
+                    channel, follow_enabled, follow_message,
+                    sub_enabled, sub_message, resub_enabled, resub_message,
+                    giftsub_enabled, giftsub_message,
+                    raid_enabled, raid_message,
+                    bits_enabled, bits_message, bits_minimum
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(channel) DO UPDATE SET
+                    follow_enabled = excluded.follow_enabled,
+                    follow_message = excluded.follow_message,
+                    sub_enabled = excluded.sub_enabled,
+                    sub_message = excluded.sub_message,
+                    resub_enabled = excluded.resub_enabled,
+                    resub_message = excluded.resub_message,
+                    giftsub_enabled = excluded.giftsub_enabled,
+                    giftsub_message = excluded.giftsub_message,
+                    raid_enabled = excluded.raid_enabled,
+                    raid_message = excluded.raid_message,
+                    bits_enabled = excluded.bits_enabled,
+                    bits_message = excluded.bits_message,
+                    bits_minimum = excluded.bits_minimum
+            """, (
+                channel,
+                request.form.get("follow_enabled") == "on",
+                request.form.get("follow_message", "Welcome @$(user) to the community! 🎉"),
+                request.form.get("sub_enabled") == "on",
+                request.form.get("sub_message", "Thanks @$(user) for subscribing! 💜"),
+                request.form.get("resub_enabled") == "on",
+                request.form.get("resub_message", "Thanks @$(user) for $(months) months! 💜"),
+                request.form.get("giftsub_enabled") == "on",
+                request.form.get("giftsub_message", "@$(user) gifted a sub to @$(recipient)! 🎁"),
+                request.form.get("raid_enabled") == "on",
+                request.form.get("raid_message", "Welcome $(count) raiders from @$(user)! 🎊"),
+                request.form.get("bits_enabled") == "on",
+                request.form.get("bits_message", "Thanks @$(user) for $(bits) bits! 💎"),
+                int(request.form.get("bits_minimum", 1))
+            ))
+            conn.commit()
+            flash("Alert settings saved!", "success")
+        
+        conn.close()
+        return redirect(url_for("alerts_settings"))
+    
+    # GET request - load settings
+    cursor.execute("SELECT * FROM alert_settings WHERE channel = ?", (channel,))
+    row = cursor.fetchone()
+    settings = dict(row) if row else {
+        "alerts_enabled": True,
+        "alert_cooldown": 5,
+        "follow_enabled": True,
+        "follow_message": "Welcome @$(user) to the community! 🎉",
+        "sub_enabled": True,
+        "sub_message": "Thanks @$(user) for subscribing! 💜",
+        "resub_enabled": True,
+        "resub_message": "Thanks @$(user) for $(months) months! 💜",
+        "giftsub_enabled": True,
+        "giftsub_message": "@$(user) gifted a sub to @$(recipient)! 🎁",
+        "raid_enabled": True,
+        "raid_message": "Welcome $(count) raiders from @$(user)! 🎊",
+        "bits_enabled": True,
+        "bits_message": "Thanks @$(user) for $(bits) bits! 💎",
+        "bits_minimum": 1
+    }
+    conn.close()
+    
+    return render_template("alerts_settings.html", settings=settings)
+
+# ==================== Raid Protection Settings ====================
+
+@app.route("/raid-settings", methods=["GET", "POST"])
+@login_required
+def raid_settings():
+    """Raid protection settings page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    if request.method == "POST":
+        action = request.form.get("action", "save_settings")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if action == "save_settings":
+            # Ensure table exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS raid_settings (
+                    channel TEXT PRIMARY KEY,
+                    enabled BOOLEAN DEFAULT TRUE,
+                    auto_detect_threshold INTEGER DEFAULT 5,
+                    duration_minutes INTEGER DEFAULT 5,
+                    follower_only BOOLEAN DEFAULT TRUE,
+                    follower_age_minutes INTEGER DEFAULT 10,
+                    slow_mode BOOLEAN DEFAULT TRUE,
+                    slow_mode_seconds INTEGER DEFAULT 30,
+                    welcome_message TEXT DEFAULT 'Welcome raiders! Chat is in protected mode for a few minutes. 🛡️'
+                )
+            """)
+            
+            # Save settings
+            cursor.execute("""
+                INSERT INTO raid_settings 
+                (channel, enabled, auto_detect_threshold, duration_minutes, follower_only, 
+                 follower_age_minutes, slow_mode, slow_mode_seconds, welcome_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(channel) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    auto_detect_threshold = excluded.auto_detect_threshold,
+                    duration_minutes = excluded.duration_minutes,
+                    follower_only = excluded.follower_only,
+                    follower_age_minutes = excluded.follower_age_minutes,
+                    slow_mode = excluded.slow_mode,
+                    slow_mode_seconds = excluded.slow_mode_seconds,
+                    welcome_message = excluded.welcome_message
+            """, (
+                channel.lower(),
+                request.form.get("enabled") == "on",
+                int(request.form.get("auto_detect_threshold", 5)),
+                int(request.form.get("duration_minutes", 5)),
+                request.form.get("follower_only") == "on",
+                int(request.form.get("follower_age_minutes", 10)),
+                request.form.get("slow_mode") == "on",
+                int(request.form.get("slow_mode_seconds", 30)),
+                request.form.get("welcome_message", "").strip()
+            ))
+            conn.commit()
+            flash("Raid protection settings saved!", "success")
+        
+        elif action == "enable_protection":
+            # This would trigger the bot to enable protection
+            # For now, just show a message
+            flash("Raid protection manually enabled! (Bot integration pending)", "warning")
+        
+        elif action == "disable_protection":
+            flash("Raid protection manually disabled! (Bot integration pending)", "info")
+        
+        conn.close()
+        return redirect(url_for("raid_settings"))
+    
+    # GET request - load settings
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Ensure table exists
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS raid_settings (
+            channel TEXT PRIMARY KEY,
+            enabled BOOLEAN DEFAULT TRUE,
+            auto_detect_threshold INTEGER DEFAULT 5,
+            duration_minutes INTEGER DEFAULT 5,
+            follower_only BOOLEAN DEFAULT TRUE,
+            follower_age_minutes INTEGER DEFAULT 10,
+            slow_mode BOOLEAN DEFAULT TRUE,
+            slow_mode_seconds INTEGER DEFAULT 30,
+            welcome_message TEXT DEFAULT 'Welcome raiders! Chat is in protected mode for a few minutes. 🛡️'
+        )
+    """)
+    conn.commit()
+    
+    # Get settings
+    cursor.execute("SELECT * FROM raid_settings WHERE channel = ?", (channel.lower(),))
+    row = cursor.fetchone()
+    settings = dict(row) if row else {
+        "enabled": True,
+        "auto_detect_threshold": 5,
+        "duration_minutes": 5,
+        "follower_only": True,
+        "follower_age_minutes": 10,
+        "slow_mode": True,
+        "slow_mode_seconds": 30,
+        "welcome_message": "Welcome raiders! Chat is in protected mode for a few minutes. 🛡️"
+    }
+    
+    conn.close()
+    
+    return render_template("raid_settings.html", settings=settings)
 
 
 if __name__ == "__main__":

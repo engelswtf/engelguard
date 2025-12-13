@@ -90,6 +90,10 @@ class TwitchBot(commands.Bot):
             ("bot.cogs.quotes", True),  # Quotes always enabled
             ("bot.cogs.songrequests", True),  # Song requests always enabled (but toggleable per channel)
             ("bot.cogs.giveaways", True),  # Giveaways always enabled (but toggleable per channel)
+            ("bot.cogs.raidprotect", True),  # Raid protection always enabled
+            ("bot.cogs.gambling", True),  # Gambling mini-games
+            ("bot.cogs.queue", True),  # Viewer queue system
+            ("bot.cogs.alerts", True),  # Chat alerts for follows, subs, raids, bits
         ]
 
         for cog_path, enabled in cogs_to_load:

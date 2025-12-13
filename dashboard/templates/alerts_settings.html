@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+
+{% block title %}Chat Alerts - EngelGuard Dashboard{% endblock %}
+{% block page_title %}Chat Alerts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <p class="page-description">Configure chat alert messages for follows, subscriptions, raids, and bits. Customize messages with variables to personalize each alert.</p>
+</div>
+
+<!-- Global Settings -->
+<div class="card global-settings-card">
+    <div class="card-header">
+        <div class="filter-title">
+            <span class="filter-icon">⚙️</span>
+            <h3>Global Settings</h3>
+        </div>
+        <label class="toggle master-toggle">
+            <input type="checkbox" id="masterToggle" {% if settings.alerts_enabled %}checked{% endif %}>
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">All Alerts</span>
+        </label>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('alerts_settings') }}" id="globalSettingsForm">
+            <input type="hidden" name="action" value="global_settings">
+            <input type="hidden" name="alerts_enabled" id="alertsEnabledInput" value="{{ 'on' if settings.alerts_enabled else '' }}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Alert Cooldown (seconds)</label>
+                    <p class="field-description">Minimum time between alerts of the same type to prevent spam.</p>
+                    <input type="number" name="alert_cooldown" value="{{ settings.alert_cooldown or 5 }}" min="0" max="300">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Global Settings</button>
+        </form>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('alerts_settings') }}" id="alertsForm">
+<input type="hidden" name="action" value="save_alerts">
+
+<!-- Follow Alerts -->
+<div class="filter-section">
+    <h2 class="section-title">Follow Alerts</h2>
+    <div class="card alert-card">
+        <div class="card-header">
+            <div class="filter-title">
+                <span class="filter-icon">❤️</span>
+                <h3>New Follower Alert</h3>
+            </div>
+            <label class="toggle">
+                <input type="checkbox" name="follow_enabled" {% if settings.follow_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Announce when someone follows your channel.</p>
+            <div class="form-group">
+                <label>Alert Message</label>
+                <textarea name="follow_message" rows="2" class="alert-message-input">{{ settings.follow_message or 'Welcome @$(user) to the community! 🎉' }}</textarea>
+            </div>
+            <div class="variables-help">
+                <span class="variables-label">Available Variables:</span>
+                <div class="variable-tags">
+                    <span class="variable-tag" data-var="$(user)">$(user)</span>
+                </div>
+                <p class="variables-desc"><code>$(user)</code> = Follower's username</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Subscription Alerts -->
+<div class="filter-section">
+    <h2 class="section-title">Subscription Alerts</h2>
+    <div class="alerts-grid">
+        <!-- New Sub -->
+        <div class="card alert-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">⭐</span>
+                    <h3>New Subscription</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="sub_enabled" {% if settings.sub_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Announce new subscriptions.</p>
+                <div class="form-group">
+                    <label>Alert Message</label>
+                    <textarea name="sub_message" rows="2" class="alert-message-input">{{ settings.sub_message or 'Thanks @$(user) for subscribing! 💜' }}</textarea>
+                </div>
+                <div class="variables-help">
+                    <span class="variables-label">Available Variables:</span>
+                    <div class="variable-tags">
+                        <span class="variable-tag" data-var="$(user)">$(user)</span>
+                        <span class="variable-tag" data-var="$(tier)">$(tier)</span>
+                    </div>
+                    <p class="variables-desc"><code>$(user)</code> = Subscriber's username, <code>$(tier)</code> = Sub tier (1/2/3)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resub -->
+        <div class="card alert-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">🔄</span>
+                    <h3>Resubscription</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="resub_enabled" {% if settings.resub_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Announce resubscriptions with month count.</p>
+                <div class="form-group">
+                    <label>Alert Message</label>
+                    <textarea name="resub_message" rows="2" class="alert-message-input">{{ settings.resub_message or 'Thanks @$(user) for $(months) months! 💜' }}</textarea>
+                </div>
+                <div class="variables-help">
+                    <span class="variables-label">Available Variables:</span>
+                    <div class="variable-tags">
+                        <span class="variable-tag" data-var="$(user)">$(user)</span>
+                        <span class="variable-tag" data-var="$(months)">$(months)</span>
+                        <span class="variable-tag" data-var="$(tier)">$(tier)</span>
+                    </div>
+                    <p class="variables-desc"><code>$(months)</code> = Total months subscribed</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gift Sub -->
+        <div class="card alert-card">
+            <div class="card-header">
+                <div class="filter-title">
+                    <span class="filter-icon">🎁</span>
+                    <h3>Gift Subscription</h3>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" name="giftsub_enabled" {% if settings.giftsub_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="card-body">
+                <p class="filter-description">Announce gifted subscriptions.</p>
+                <div class="form-group">
+                    <label>Alert Message</label>
+                    <textarea name="giftsub_message" rows="2" class="alert-message-input">{{ settings.giftsub_message or '@$(user) gifted a sub to @$(recipient)! 🎁' }}</textarea>
+                </div>
+                <div class="variables-help">
+                    <span class="variables-label">Available Variables:</span>
+                    <div class="variable-tags">
+                        <span class="variable-tag" data-var="$(user)">$(user)</span>
+                        <span class="variable-tag" data-var="$(recipient)">$(recipient)</span>
+                        <span class="variable-tag" data-var="$(tier)">$(tier)</span>
+                    </div>
+                    <p class="variables-desc"><code>$(user)</code> = Gifter, <code>$(recipient)</code> = Gift recipient</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Raid Alerts -->
+<div class="filter-section">
+    <h2 class="section-title">Raid Alerts</h2>
+    <div class="card alert-card">
+        <div class="card-header">
+            <div class="filter-title">
+                <span class="filter-icon">🎊</span>
+                <h3>Incoming Raid</h3>
+            </div>
+            <label class="toggle">
+                <input type="checkbox" name="raid_enabled" {% if settings.raid_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Welcome raiders from other channels.</p>
+            <div class="form-group">
+                <label>Alert Message</label>
+                <textarea name="raid_message" rows="2" class="alert-message-input">{{ settings.raid_message or 'Welcome $(count) raiders from @$(user)! 🎊' }}</textarea>
+            </div>
+            <div class="variables-help">
+                <span class="variables-label">Available Variables:</span>
+                <div class="variable-tags">
+                    <span class="variable-tag" data-var="$(user)">$(user)</span>
+                    <span class="variable-tag" data-var="$(count)">$(count)</span>
+                </div>
+                <p class="variables-desc"><code>$(user)</code> = Raiding channel, <code>$(count)</code> = Number of raiders</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bits Alerts -->
+<div class="filter-section">
+    <h2 class="section-title">Bits Alerts</h2>
+    <div class="card alert-card">
+        <div class="card-header">
+            <div class="filter-title">
+                <span class="filter-icon">💎</span>
+                <h3>Bits/Cheer Alert</h3>
+            </div>
+            <label class="toggle">
+                <input type="checkbox" name="bits_enabled" {% if settings.bits_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="card-body">
+            <p class="filter-description">Thank viewers for cheering with bits.</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Minimum Bits</label>
+                    <p class="field-description">Only alert for cheers at or above this amount.</p>
+                    <input type="number" name="bits_minimum" value="{{ settings.bits_minimum or 1 }}" min="1" max="1000000">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Alert Message</label>
+                <textarea name="bits_message" rows="2" class="alert-message-input">{{ settings.bits_message or 'Thanks @$(user) for $(bits) bits! 💎' }}</textarea>
+            </div>
+            <div class="variables-help">
+                <span class="variables-label">Available Variables:</span>
+                <div class="variable-tags">
+                    <span class="variable-tag" data-var="$(user)">$(user)</span>
+                    <span class="variable-tag" data-var="$(bits)">$(bits)</span>
+                </div>
+                <p class="variables-desc"><code>$(user)</code> = Cheerer's username, <code>$(bits)</code> = Amount of bits</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="form-actions">
+    <button type="submit" class="btn btn-primary btn-lg">Save Alert Settings</button>
+</div>
+</form>
+
+<!-- Test Alert Section -->
+<div class="card">
+    <div class="card-header">
+        <div class="filter-title">
+            <span class="filter-icon">🧪</span>
+            <h3>Test Alerts</h3>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="filter-description">Preview how your alert messages will look in chat.</p>
+        <div class="test-alerts-grid">
+            <button type="button" class="btn btn-secondary" onclick="testAlert('follow')">Test Follow</button>
+            <button type="button" class="btn btn-secondary" onclick="testAlert('sub')">Test Sub</button>
+            <button type="button" class="btn btn-secondary" onclick="testAlert('resub')">Test Resub</button>
+            <button type="button" class="btn btn-secondary" onclick="testAlert('giftsub')">Test Gift Sub</button>
+            <button type="button" class="btn btn-secondary" onclick="testAlert('raid')">Test Raid</button>
+            <button type="button" class="btn btn-secondary" onclick="testAlert('bits')">Test Bits</button>
+        </div>
+        <div id="testResult" class="test-result" style="display:none;"></div>
+    </div>
+</div>
+
+<style>
+.global-settings-card { margin-bottom: 1.5rem; }
+.global-settings-card .card-header { display: flex; justify-content: space-between; align-items: center; }
+.master-toggle { display: flex; align-items: center; gap: 0.75rem; }
+.filter-section { margin-bottom: 2rem; }
+.section-title { font-size: 1.25rem; font-weight: 600; color: var(--text-primary); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border-color); }
+.alerts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
+.alert-card { transition: transform 0.2s, box-shadow 0.2s; }
+.alert-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
+.alert-card .card-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; }
+.filter-title { display: flex; align-items: center; gap: 0.5rem; }
+.filter-icon { font-size: 1.25rem; }
+.filter-title h3 { margin: 0; font-size: 1rem; }
+.filter-description { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem; }
+.field-description { color: var(--text-secondary); font-size: 0.8rem; margin: 0.25rem 0 0.5rem 0; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem; }
+.form-group { margin-bottom: 0.75rem; }
+.form-group label { display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.25rem; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; }
+.alert-message-input { font-family: 'Consolas', 'Monaco', monospace; resize: vertical; min-height: 60px; }
+.variables-help { background: var(--bg-tertiary); border-radius: 8px; padding: 0.75rem; margin-top: 0.75rem; }
+.variables-label { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 0.5rem; }
+.variable-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+.variable-tag { background: var(--accent); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-family: monospace; cursor: pointer; transition: all 0.2s; }
+.variable-tag:hover { background: var(--accent-hover); transform: scale(1.05); }
+.variables-desc { font-size: 0.75rem; color: var(--text-secondary); margin: 0; }
+.variables-desc code { background: var(--bg-secondary); padding: 0.1rem 0.3rem; border-radius: 3px; }
+.form-actions { text-align: center; margin: 2rem 0; }
+.test-alerts-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.test-result { margin-top: 1rem; padding: 1rem; border-radius: 8px; background: var(--bg-secondary); border-left: 4px solid var(--accent); }
+.test-result .preview-label { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+.test-result .preview-message { font-family: monospace; font-size: 0.95rem; color: var(--text-primary); }
+@media (max-width: 768px) { .alerts-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } .test-alerts-grid { flex-direction: column; } }
+</style>
+
+<script>
+// Master toggle functionality
+document.getElementById('masterToggle').addEventListener('change', function() {
+    document.getElementById('alertsEnabledInput').value = this.checked ? 'on' : '';
+    // Optionally toggle all individual alerts
+    const allToggles = document.querySelectorAll('#alertsForm input[type="checkbox"]');
+    allToggles.forEach(toggle => {
+        toggle.checked = this.checked;
+    });
+});
+
+// Click to insert variable into textarea
+document.querySelectorAll('.variable-tag').forEach(tag => {
+    tag.addEventListener('click', function() {
+        const variable = this.dataset.var;
+        const card = this.closest('.alert-card') || this.closest('.card');
+        const textarea = card.querySelector('textarea');
+        if (textarea) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const text = textarea.value;
+            textarea.value = text.substring(0, start) + variable + text.substring(end);
+            textarea.focus();
+            textarea.selectionStart = textarea.selectionEnd = start + variable.length;
+        }
+    });
+});
+
+// Test alert preview
+function testAlert(type) {
+    const form = document.getElementById('alertsForm');
+    const formData = new FormData(form);
+    
+    // Get the message for this type
+    let message = '';
+    let testUser = 'TestUser';
+    
+    switch(type) {
+        case 'follow':
+            message = formData.get('follow_message') || 'Welcome @$(user) to the community! 🎉';
+            message = message.replace(/\$\(user\)/gi, testUser);
+            break;
+        case 'sub':
+            message = formData.get('sub_message') || 'Thanks @$(user) for subscribing! 💜';
+            message = message.replace(/\$\(user\)/gi, testUser).replace(/\$\(tier\)/gi, '1');
+            break;
+        case 'resub':
+            message = formData.get('resub_message') || 'Thanks @$(user) for $(months) months! 💜';
+            message = message.replace(/\$\(user\)/gi, testUser).replace(/\$\(months\)/gi, '12').replace(/\$\(tier\)/gi, '1');
+            break;
+        case 'giftsub':
+            message = formData.get('giftsub_message') || '@$(user) gifted a sub to @$(recipient)! 🎁';
+            message = message.replace(/\$\(user\)/gi, testUser).replace(/\$\(recipient\)/gi, 'LuckyViewer').replace(/\$\(tier\)/gi, '1');
+            break;
+        case 'raid':
+            message = formData.get('raid_message') || 'Welcome $(count) raiders from @$(user)! 🎊';
+            message = message.replace(/\$\(user\)/gi, testUser).replace(/\$\(count\)/gi, '42').replace(/\$\(raiders\)/gi, '42');
+            break;
+        case 'bits':
+            message = formData.get('bits_message') || 'Thanks @$(user) for $(bits) bits! 💎';
+            message = message.replace(/\$\(user\)/gi, testUser).replace(/\$\(bits\)/gi, '100');
+            break;
+    }
+    
+    const result = document.getElementById('testResult');
+    result.style.display = 'block';
+    result.innerHTML = '<div class="preview-label">Preview (' + type + '):</div><div class="preview-message">' + escapeHtml(message) + '</div>';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

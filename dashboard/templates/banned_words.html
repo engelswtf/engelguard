@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Banned Words - EngelGuard Dashboard{% endblock %}
+{% block page_title %}Banned Words{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <p class="page-description">Manage banned words and phrases. Messages containing these will be automatically moderated.</p>
+</div>
+
+<!-- Add New Word -->
+<div class="card">
+    <div class="card-header">
+        <h3>Add Banned Word/Phrase</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('banned_words_page') }}" class="add-word-form">
+            <input type="hidden" name="action" value="add">
+            <div class="form-row">
+                <div class="form-group" style="flex: 2;">
+                    <label for="word">Word or Phrase</label>
+                    <input type="text" id="word" name="word" required placeholder="Enter word or phrase to ban...">
+                </div>
+                <div class="form-group">
+                    <label for="ban_action">Action</label>
+                    <select id="ban_action" name="ban_action">
+                        <option value="delete">Delete Message</option>
+                        <option value="timeout">Timeout User</option>
+                        <option value="ban">Ban User</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="duration">Timeout Duration</label>
+                    <select id="duration" name="duration">
+                        <option value="60">1 minute</option>
+                        <option value="300">5 minutes</option>
+                        <option value="600" selected>10 minutes</option>
+                        <option value="1800">30 minutes</option>
+                        <option value="3600">1 hour</option>
+                        <option value="86400">24 hours</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="is_regex">
+                        Regex Pattern
+                    </label>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Add Banned Word</button>
+        </form>
+    </div>
+</div>
+
+<!-- Import/Export -->
+<div class="card">
+    <div class="card-header">
+        <h3>Import / Export</h3>
+    </div>
+    <div class="card-body">
+        <div class="import-export-row">
+            <form method="POST" action="{{ url_for('banned_words_page') }}" enctype="multipart/form-data" style="display: inline;">
+                <input type="hidden" name="action" value="import">
+                <input type="file" name="import_file" accept=".json,.txt" id="importFile" style="display: none;" onchange="this.form.submit()">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('importFile').click()">
+                    📥 Import
+                </button>
+            </form>
+            <a href="{{ url_for('banned_words_export') }}" class="btn btn-secondary">📤 Export JSON</a>
+            <span class="import-hint">Import accepts JSON or plain text (one word per line)</span>
+        </div>
+    </div>
+</div>
+
+<!-- Banned Words List -->
+<div class="card">
+    <div class="card-header">
+        <h3>Banned Words ({{ words|length }})</h3>
+        <div class="header-actions">
+            <input type="text" id="searchWords" placeholder="Search..." class="search-input" onkeyup="filterWords()">
+        </div>
+    </div>
+    <div class="card-body">
+        {% if words %}
+        <div class="table-responsive">
+            <table class="data-table" id="wordsTable">
+                <thead>
+                    <tr>
+                        <th>Word/Phrase</th>
+                        <th>Type</th>
+                        <th>Action</th>
+                        <th>Duration</th>
+                        <th>Added By</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for word in words %}
+                    <tr class="word-row {% if not word.enabled %}disabled-row{% endif %}">
+                        <td class="word-cell">
+                            <code>{{ word.word[:50] }}{% if word.word|length > 50 %}...{% endif %}</code>
+                        </td>
+                        <td>
+                            {% if word.is_regex %}
+                            <span class="badge badge-regex">Regex</span>
+                            {% else %}
+                            <span class="badge badge-exact">Exact</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="action-badge action-{{ word.action }}">{{ word.action }}</span>
+                        </td>
+                        <td>
+                            {% if word.action == 'timeout' %}
+                            {{ (word.duration / 60)|int }} min
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>{{ word.added_by or 'Unknown' }}</td>
+                        <td>
+                            {% if word.enabled %}
+                            <span class="status-badge status-active">Active</span>
+                            {% else %}
+                            <span class="status-badge status-disabled">Disabled</span>
+                            {% endif %}
+                        </td>
+                        <td class="actions-cell">
+                            <form method="POST" action="{{ url_for('banned_words_page') }}" style="display: inline;">
+                                <input type="hidden" name="action" value="toggle">
+                                <input type="hidden" name="word_id" value="{{ word.id }}">
+                                <button type="submit" class="btn btn-small btn-secondary">
+                                    {% if word.enabled %}Disable{% else %}Enable{% endif %}
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('banned_words_page') }}" style="display: inline;" onsubmit="return confirm('Delete this banned word?');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="word_id" value="{{ word.id }}">
+                                <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No banned words configured yet.</p>
+            <p>Add words above to start filtering messages.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.add-word-form .form-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+.add-word-form .form-group {
+    flex: 1;
+    min-width: 150px;
+}
+.import-export-row {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+.import-hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.search-input {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    width: 200px;
+}
+.word-cell code {
+    background: var(--bg-tertiary);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-family: monospace;
+}
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.badge-regex {
+    background: rgba(145, 71, 255, 0.2);
+    color: var(--accent);
+}
+.badge-exact {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+.status-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.status-active {
+    background: rgba(0, 245, 147, 0.2);
+    color: var(--success);
+}
+.status-disabled {
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+}
+.disabled-row {
+    opacity: 0.6;
+}
+.action-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+.action-delete {
+    background: rgba(255, 184, 0, 0.2);
+    color: var(--warning);
+}
+.action-timeout {
+    background: rgba(255, 136, 0, 0.2);
+    color: #ff8800;
+}
+.action-ban {
+    background: rgba(235, 4, 0, 0.2);
+    color: var(--danger);
+}
+</style>
+
+<script>
+function filterWords() {
+    const search = document.getElementById('searchWords').value.toLowerCase();
+    const rows = document.querySelectorAll('#wordsTable tbody tr');
+    
+    rows.forEach(row => {
+        const word = row.querySelector('.word-cell').textContent.toLowerCase();
+        row.style.display = word.includes(search) ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

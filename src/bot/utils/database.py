@@ -346,6 +346,22 @@ class DatabaseManager:
                 )
             """)
             
+            # Banned words table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS banned_words (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel TEXT NOT NULL,
+                    word TEXT NOT NULL,
+                    is_regex BOOLEAN DEFAULT FALSE,
+                    action TEXT DEFAULT 'delete',
+                    duration INTEGER DEFAULT 600,
+                    added_by TEXT,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    enabled BOOLEAN DEFAULT TRUE,
+                    UNIQUE(channel, word)
+                )
+            """)
+            
             # Create indexes for performance
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_mod_actions_timestamp 
@@ -402,6 +418,14 @@ class DatabaseManager:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_giveaway_winners_giveaway_id
                 ON giveaway_winners(giveaway_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_banned_words_channel
+                ON banned_words(channel)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_banned_words_channel_enabled
+                ON banned_words(channel, enabled)
             """)
             
             logger.info("Database tables initialized")
@@ -1892,6 +1916,402 @@ class DatabaseManager:
                 (now,)
             )
             return [dict(row) for row in cursor.fetchall()]
+
+    # ==================== Banned Words Methods ====================
+    
+    def add_banned_word(
+        self,
+        channel: str,
+        word: str,
+        is_regex: bool = False,
+        action: str = "delete",
+        duration: int = 600,
+        added_by: str | None = None
+    ) -> int:
+        """
+        Add a banned word/phrase to the database.
+        
+        Args:
+            channel: Channel name
+            word: Word or phrase to ban (or regex pattern if is_regex=True)
+            is_regex: Whether the word is a regex pattern
+            action: Action to take (delete, timeout, ban)
+            duration: Timeout duration in seconds (for timeout action)
+            added_by: Username who added the word
+            
+        Returns:
+            int: ID of the new banned word entry, or 0 if already exists
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO banned_words 
+                    (channel, word, is_regex, action, duration, added_by)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (channel.lower(), word, is_regex, action, duration, added_by)
+                )
+                logger.info(
+                    "Added banned word '%s' for channel %s (regex=%s, action=%s)",
+                    word[:30], channel, is_regex, action
+                )
+                return cursor.lastrowid or 0
+            except Exception as e:
+                logger.warning("Failed to add banned word '%s': %s", word[:30], e)
+                return 0
+    
+    def remove_banned_word(self, channel: str, word: str) -> bool:
+        """
+        Remove a banned word from the database.
+        
+        Args:
+            channel: Channel name
+            word: Word to remove
+            
+        Returns:
+            bool: True if word was removed, False if not found
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM banned_words WHERE channel = ? AND word = ?",
+                (channel.lower(), word)
+            )
+            removed = cursor.rowcount > 0
+            if removed:
+                logger.info("Removed banned word '%s' for channel %s", word[:30], channel)
+            return removed
+    
+    def remove_banned_word_by_id(self, word_id: int) -> bool:
+        """
+        Remove a banned word by its ID.
+        
+        Args:
+            word_id: ID of the banned word entry
+            
+        Returns:
+            bool: True if word was removed
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM banned_words WHERE id = ?", (word_id,))
+            return cursor.rowcount > 0
+    
+    def get_banned_words(self, channel: str, enabled_only: bool = True) -> list[dict[str, Any]]:
+        """
+        Get all banned words for a channel.
+        
+        Args:
+            channel: Channel name
+            enabled_only: Only return enabled words
+            
+        Returns:
+            list: List of banned word dicts
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            if enabled_only:
+                cursor.execute(
+                    """
+                    SELECT * FROM banned_words 
+                    WHERE channel = ? AND enabled = TRUE
+                    ORDER BY word
+                    """,
+                    (channel.lower(),)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT * FROM banned_words 
+                    WHERE channel = ?
+                    ORDER BY word
+                    """,
+                    (channel.lower(),)
+                )
+            
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_banned_word_by_id(self, word_id: int) -> dict[str, Any] | None:
+        """
+        Get a banned word by ID.
+        
+        Args:
+            word_id: ID of the banned word
+            
+        Returns:
+            dict | None: Banned word data or None
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM banned_words WHERE id = ?", (word_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def update_banned_word(
+        self,
+        channel: str,
+        word: str,
+        is_regex: bool | None = None,
+        action: str | None = None,
+        duration: int | None = None,
+        enabled: bool | None = None
+    ) -> bool:
+        """
+        Update a banned word's settings.
+        
+        Args:
+            channel: Channel name
+            word: Word to update
+            is_regex: New regex setting (optional)
+            action: New action (optional)
+            duration: New duration (optional)
+            enabled: New enabled status (optional)
+            
+        Returns:
+            bool: True if word was updated
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            updates = []
+            params = []
+            
+            if is_regex is not None:
+                updates.append("is_regex = ?")
+                params.append(is_regex)
+            if action is not None:
+                updates.append("action = ?")
+                params.append(action)
+            if duration is not None:
+                updates.append("duration = ?")
+                params.append(duration)
+            if enabled is not None:
+                updates.append("enabled = ?")
+                params.append(enabled)
+            
+            if not updates:
+                return False
+            
+            params.extend([channel.lower(), word])
+            
+            cursor.execute(
+                f"UPDATE banned_words SET {', '.join(updates)} WHERE channel = ? AND word = ?",
+                params
+            )
+            
+            return cursor.rowcount > 0
+    
+    def update_banned_word_by_id(
+        self,
+        word_id: int,
+        word: str | None = None,
+        is_regex: bool | None = None,
+        action: str | None = None,
+        duration: int | None = None,
+        enabled: bool | None = None
+    ) -> bool:
+        """
+        Update a banned word by ID.
+        
+        Args:
+            word_id: ID of the banned word
+            word: New word/pattern (optional)
+            is_regex: New regex setting (optional)
+            action: New action (optional)
+            duration: New duration (optional)
+            enabled: New enabled status (optional)
+            
+        Returns:
+            bool: True if word was updated
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            updates = []
+            params = []
+            
+            if word is not None:
+                updates.append("word = ?")
+                params.append(word)
+            if is_regex is not None:
+                updates.append("is_regex = ?")
+                params.append(is_regex)
+            if action is not None:
+                updates.append("action = ?")
+                params.append(action)
+            if duration is not None:
+                updates.append("duration = ?")
+                params.append(duration)
+            if enabled is not None:
+                updates.append("enabled = ?")
+                params.append(enabled)
+            
+            if not updates:
+                return False
+            
+            params.append(word_id)
+            
+            cursor.execute(
+                f"UPDATE banned_words SET {', '.join(updates)} WHERE id = ?",
+                params
+            )
+            
+            return cursor.rowcount > 0
+    
+    def toggle_banned_word(self, word_id: int) -> bool | None:
+        """
+        Toggle a banned word's enabled status.
+        
+        Args:
+            word_id: ID of the banned word
+            
+        Returns:
+            bool | None: New enabled status, or None if not found
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT enabled FROM banned_words WHERE id = ?", (word_id,))
+            row = cursor.fetchone()
+            
+            if not row:
+                return None
+            
+            new_status = not bool(row["enabled"])
+            cursor.execute(
+                "UPDATE banned_words SET enabled = ? WHERE id = ?",
+                (new_status, word_id)
+            )
+            
+            return new_status
+    
+    def check_banned_words(self, channel: str, message: str) -> list[dict[str, Any]]:
+        """
+        Check a message against banned words for a channel.
+        
+        Args:
+            channel: Channel name
+            message: Message content to check
+            
+        Returns:
+            list: List of matched banned word dicts with match info
+        """
+        import re as regex_module
+        
+        banned_words = self.get_banned_words(channel, enabled_only=True)
+        matches = []
+        message_lower = message.lower()
+        
+        for banned in banned_words:
+            word = banned["word"]
+            is_regex = banned["is_regex"]
+            
+            try:
+                if is_regex:
+                    # Regex pattern matching
+                    pattern = regex_module.compile(word, regex_module.IGNORECASE)
+                    match = pattern.search(message)
+                    if match:
+                        matches.append({
+                            **banned,
+                            "matched_text": match.group(),
+                            "match_type": "regex"
+                        })
+                else:
+                    # Exact word/phrase matching (case-insensitive)
+                    word_lower = word.lower()
+                    if word_lower in message_lower:
+                        matches.append({
+                            **banned,
+                            "matched_text": word,
+                            "match_type": "exact"
+                        })
+            except regex_module.error as e:
+                logger.warning("Invalid regex pattern '%s': %s", word[:30], e)
+                continue
+        
+        return matches
+    
+    def get_banned_words_count(self, channel: str) -> int:
+        """
+        Get count of banned words for a channel.
+        
+        Args:
+            channel: Channel name
+            
+        Returns:
+            int: Number of banned words
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM banned_words WHERE channel = ?",
+                (channel.lower(),)
+            )
+            row = cursor.fetchone()
+            return row["count"] if row else 0
+    
+    def export_banned_words(self, channel: str) -> list[dict[str, Any]]:
+        """
+        Export banned words for backup/transfer.
+        
+        Args:
+            channel: Channel name
+            
+        Returns:
+            list: List of banned words with all fields
+        """
+        return self.get_banned_words(channel, enabled_only=False)
+    
+    def import_banned_words(
+        self,
+        channel: str,
+        words: list[dict[str, Any]],
+        added_by: str = "import"
+    ) -> tuple[int, int]:
+        """
+        Import banned words from a list.
+        
+        Args:
+            channel: Channel name
+            words: List of word dicts with at least 'word' key
+            added_by: Username to record as importer
+            
+        Returns:
+            tuple: (added_count, skipped_count)
+        """
+        added = 0
+        skipped = 0
+        
+        for word_data in words:
+            word = word_data.get("word", "").strip()
+            if not word:
+                skipped += 1
+                continue
+            
+            result = self.add_banned_word(
+                channel=channel,
+                word=word,
+                is_regex=word_data.get("is_regex", False),
+                action=word_data.get("action", "delete"),
+                duration=word_data.get("duration", 600),
+                added_by=added_by
+            )
+            
+            if result > 0:
+                added += 1
+            else:
+                skipped += 1
+        
+        logger.info(
+            "Imported banned words for %s: %d added, %d skipped",
+            channel, added, skipped
+        )
+        return added, skipped
 
 
 # Global database instance
