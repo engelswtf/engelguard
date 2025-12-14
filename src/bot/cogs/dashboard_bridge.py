@@ -12,6 +12,9 @@ from twitchio.ext import commands
 QUEUE_FILE = Path("/opt/twitch-bot/data/dashboard_queue.json")
 DB_PATH = Path("/opt/twitch-bot/data/automod.db")
 
+# Security: Whitelist of allowed dashboard commands
+ALLOWED_DASHBOARD_COMMANDS = {'shoutout', 'so', 'message', 'announce'}
+
 
 class DashboardBridge(commands.Cog):
     """Bridge between dashboard and bot for chat messages and commands."""
@@ -152,7 +155,20 @@ class DashboardBridge(commands.Cog):
             print(f"[DashboardBridge] DB Error: {e}")
     
     async def _execute_command(self, channel_name: str, command: str, args: str) -> bool:
-        """Execute a command from the queue."""
+        """Execute a command from the dashboard with validation."""
+        
+        # Validate command is whitelisted
+        if command.lower() not in ALLOWED_DASHBOARD_COMMANDS:
+            print(f"[DashboardBridge] Blocked unauthorized command: {command}")
+            return False
+        
+        # For message commands, block IRC command injection
+        if command.lower() == 'message':
+            if args.strip().startswith('/') or args.strip().startswith('.'):
+                print(f"[DashboardBridge] Blocked command injection in message: {args[:50]}")
+                # Strip the leading character to neutralize
+                args = args.strip()[1:]
+        
         # Find the channel
         target_channel = None
         for channel in self.bot.connected_channels:
@@ -165,13 +181,17 @@ class DashboardBridge(commands.Cog):
             return False
         
         try:
-            if command == "shoutout":
+            if command.lower() in ("shoutout", "so"):
                 # Execute shoutout
                 await self._do_shoutout(target_channel, args)
                 return True
-            elif command == "message":
+            elif command.lower() == "message":
                 # Send a raw message
                 await target_channel.send(args)
+                return True
+            elif command.lower() == "announce":
+                # Send an announcement-style message
+                await target_channel.send(f"📢 {args}")
                 return True
             else:
                 print(f"[DashboardBridge] Unknown command: {command}")

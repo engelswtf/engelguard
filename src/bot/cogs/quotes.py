@@ -25,6 +25,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Maximum allowed quote length to prevent abuse
+MAX_QUOTE_LENGTH = 500
+
 
 class Quotes(commands.Cog):
     """
@@ -132,6 +135,7 @@ class Quotes(commands.Cog):
         Add a new quote. Usage: !addquote "quote text" -Author
         
         Moderator only. Auto-captures current game if streaming.
+        Maximum quote length is 500 characters.
         """
         if not text:
             await ctx.send(f'@{ctx.author.name} Usage: !addquote "quote text" -Author')
@@ -144,6 +148,11 @@ class Quotes(commands.Cog):
         
         if not quote_text:
             await ctx.send(f"@{ctx.author.name} Please provide a quote to add.")
+            return
+        
+        # Check quote length
+        if len(quote_text) > MAX_QUOTE_LENGTH:
+            await ctx.send(f"@{ctx.author.name} Quote too long! Maximum {MAX_QUOTE_LENGTH} characters.")
             return
         
         # Try to get current game

@@ -474,13 +474,22 @@ class DatabaseManager:
             )
     
     def update_trust_score(self, user_id: str, delta: int) -> int:
-        """Update user's trust score."""
+        """
+        Update user's trust score with bounds checking (0-100).
+        
+        Args:
+            user_id: User ID to update
+            delta: Amount to add (positive) or subtract (negative)
+            
+        Returns:
+            New trust score (bounded 0-100)
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
                 UPDATE users 
-                SET trust_score = MAX(0, MIN(100, trust_score + ?))
+                SET trust_score = MIN(100, MAX(0, trust_score + ?))
                 WHERE user_id = ?
                 """,
                 (delta, user_id)
@@ -491,6 +500,28 @@ class DatabaseManager:
             )
             row = cursor.fetchone()
             return row["trust_score"] if row else 50
+    
+    def set_trust_score(self, user_id: str, score: int) -> int:
+        """
+        Set user's trust score to an absolute value (bounded 0-100).
+        
+        Args:
+            user_id: User ID to update
+            score: New trust score (will be clamped to 0-100)
+            
+        Returns:
+            Actual trust score set (bounded 0-100)
+        """
+        # Clamp score to valid range
+        bounded_score = max(0, min(100, score))
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE users SET trust_score = ? WHERE user_id = ?",
+                (bounded_score, user_id)
+            )
+            return bounded_score
     
     def increment_warnings(self, user_id: str) -> int:
         """Increment user's warning count."""

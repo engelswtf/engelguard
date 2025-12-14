@@ -87,6 +87,29 @@ class Timers(commands.Cog):
             # Check every 30 seconds
             await asyncio.sleep(30)
     
+    def _sanitize_timer_message(self, message: str) -> str:
+        """Remove IRC commands from timer messages.
+        
+        Blocks Twitch slash commands and dot commands that could
+        be used to execute moderator actions via timer messages.
+        
+        Args:
+            message: The raw timer message
+            
+        Returns:
+            str: Sanitized message with leading / or . removed
+        """
+        message = message.strip()
+        # Block Twitch slash commands
+        if message.startswith('/'):
+            logger.warning("Blocked slash command in timer: %s", message[:50])
+            message = message[1:]
+        # Block dot commands (alternative command prefix)
+        if message.startswith('.'):
+            logger.warning("Blocked dot command in timer: %s", message[:50])
+            message = message[1:]
+        return message
+    
     async def _check_timers(self) -> None:
         """Check all timers and trigger if ready."""
         timers = self.db.get_enabled_timers()
@@ -152,8 +175,11 @@ class Timers(commands.Cog):
             user_id="0"
         )
         
+        # Sanitize message to prevent IRC command injection
+        sanitized_message = self._sanitize_timer_message(message)
+        
         try:
-            await channel.send(message)
+            await channel.send(sanitized_message)
         except Exception as e:
             logger.error("Failed to send timer message: %s", e)
     

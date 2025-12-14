@@ -168,7 +168,11 @@ class Nuke(commands.Cog):
     - Safety limits
     - Excludes protected users by default
     - Full audit logging
+    - Confirmation required for large nukes (>20 users)
     """
+    
+    # Pending nuke confirmations: {channel: {data}}
+    _pending_nukes: dict[str, dict] = {}
     
     def __init__(self, bot: TwitchBot) -> None:
         """Initialize the nuke cog."""
@@ -267,8 +271,19 @@ class Nuke(commands.Cog):
         
         # Confirmation for large nukes
         if len(matches) > 20:
-            await ctx.send(f"@{ctx.author.name} About to {action} {len(matches)} users. Use !nukeconfirm within 30s to proceed.")
-            # Store pending nuke (simplified - in production use proper state management)
+            channel_name_lower = channel_name.lower()
+            self._pending_nukes[channel_name_lower] = {
+                "matches": matches,
+                "action": action,
+                "duration": duration,
+                "pattern": pattern,
+                "mod": ctx.author.name,
+                "expires": datetime.now(timezone.utc) + timedelta(seconds=30)
+            }
+            await ctx.send(
+                f"@{ctx.author.name} ⚠️ About to {action} {len(matches)} users matching '{pattern}'. "
+                f"Type !nukeconfirm within 30 seconds to proceed, or !nukecancel to abort."
+            )
             return
         
         # Execute nuke
@@ -379,6 +394,50 @@ class Nuke(commands.Cog):
             "Nuke executed by %s in %s: pattern='%s', action=%s, affected=%d",
             moderator, channel.name, pattern, action, success_count
         )
+    
+    @commands.command(name="nukeconfirm")
+    @is_moderator()
+    async def nuke_confirm(self, ctx: Context) -> None:
+        """Confirm a pending nuke action."""
+        channel = ctx.channel.name.lower()
+        
+        if channel not in self._pending_nukes:
+            await ctx.send(f"@{ctx.author.name} No pending nuke to confirm.")
+            return
+        
+        pending = self._pending_nukes[channel]
+        
+        # Check expiry
+        if datetime.now(timezone.utc) > pending["expires"]:
+            del self._pending_nukes[channel]
+            await ctx.send(f"@{ctx.author.name} Nuke confirmation expired. Run the command again.")
+            return
+        
+        # Check same mod
+        if pending["mod"] != ctx.author.name:
+            await ctx.send(f"@{ctx.author.name} Only {pending['mod']} can confirm this nuke.")
+            return
+        
+        # Execute the nuke
+        await self._execute_nuke(
+            ctx,
+            pending["matches"],
+            pending["action"],
+            pending["duration"],
+            pending["pattern"]
+        )
+        del self._pending_nukes[channel]
+    
+    @commands.command(name="nukecancel")
+    @is_moderator()
+    async def nuke_cancel(self, ctx: Context) -> None:
+        """Cancel a pending nuke."""
+        channel = ctx.channel.name.lower()
+        if channel in self._pending_nukes:
+            del self._pending_nukes[channel]
+            await ctx.send(f"@{ctx.author.name} Nuke cancelled.")
+        else:
+            await ctx.send(f"@{ctx.author.name} No pending nuke to cancel.")
     
     @commands.command(name="nukelog")
     @is_moderator()

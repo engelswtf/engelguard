@@ -14,6 +14,8 @@ import hashlib
 import secrets
 import subprocess
 from datetime import datetime, timedelta
+from collections import defaultdict
+
 from functools import wraps
 from pathlib import Path
 from typing import Any, Optional
@@ -46,6 +48,12 @@ load_dotenv(ENV_FILE)
 app = Flask(__name__)
 app.secret_key = os.getenv("DASHBOARD_SECRET_KEY", secrets.token_hex(32))
 app.permanent_session_lifetime = timedelta(hours=1)
+
+# Login rate limiting
+_login_attempts: dict[str, list[datetime]] = defaultdict(list)
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_MINUTES = 15
+
 
 # Security Fix: Add CSRF protection
 if CSRF_AVAILABLE:
@@ -131,6 +139,30 @@ def mask_secret(value: str, show_chars: int = 4) -> str:
     if not value or len(value) <= show_chars:
         return "*" * 8
     return "*" * (len(value) - show_chars) + value[-show_chars:]
+
+
+def safe_int(value: any, default: int = 0, min_val: int = None, max_val: int = None) -> int:
+    """Safely convert value to int with bounds checking.
+    
+    Args:
+        value: Value to convert to integer
+        default: Default value if conversion fails
+        min_val: Optional minimum bound
+        max_val: Optional maximum bound
+        
+    Returns:
+        int: Converted and bounded integer value
+    """
+    try:
+        result = int(value) if value is not None else default
+        if min_val is not None:
+            result = max(min_val, result)
+        if max_val is not None:
+            result = min(max_val, result)
+        return result
+    except (ValueError, TypeError):
+        return default
+
 
 # Dashboard-to-bot message queue
 DASHBOARD_QUEUE_FILE = "/opt/twitch-bot/data/dashboard_queue.json"
@@ -363,12 +395,29 @@ def index():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """Login page."""
+    """Login page with rate limiting."""
     if request.method == "POST":
+        client_ip = request.remote_addr
+        now = datetime.now()
+        
+        # Clean old attempts (older than lockout period)
+        _login_attempts[client_ip] = [
+            t for t in _login_attempts[client_ip] 
+            if now - t < timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+        ]
+        
+        # Check if locked out
+        if len(_login_attempts[client_ip]) >= MAX_LOGIN_ATTEMPTS:
+            remaining = LOGIN_LOCKOUT_MINUTES - int((now - _login_attempts[client_ip][0]).total_seconds() / 60)
+            flash(f"Too many login attempts. Try again in {remaining} minutes.", "error")
+            return render_template("login.html")
+        
         password = request.form.get("password", "")
         stored_password = get_env_value("DASHBOARD_PASSWORD", "changeme123")
         
         if password == stored_password:
+            # Clear attempts on successful login
+            _login_attempts[client_ip] = []
             # Security Fix: Regenerate session to prevent session fixation
             session.clear()
             session.permanent = True
@@ -380,7 +429,13 @@ def login():
             flash("Successfully logged in!", "success")
             return redirect(url_for("dashboard"))
         else:
-            flash("Invalid password", "error")
+            # Record failed attempt
+            _login_attempts[client_ip].append(now)
+            attempts_left = MAX_LOGIN_ATTEMPTS - len(_login_attempts[client_ip])
+            if attempts_left > 0:
+                flash(f"Invalid password. {attempts_left} attempts remaining.", "error")
+            else:
+                flash(f"Too many login attempts. Try again in {LOGIN_LOCKOUT_MINUTES} minutes.", "error")
     
     return render_template("login.html")
 
@@ -431,8 +486,8 @@ def commands_page():
                     name,
                     request.form.get("response"),
                     "dashboard",
-                    int(request.form.get("cooldown_user", 5)),
-                    int(request.form.get("cooldown_global", 0)),
+                    safe_int(request.form.get("cooldown_user"), default=5, min_val=0, max_val=3600),
+                    safe_int(request.form.get("cooldown_global"), default=0, min_val=0, max_val=3600),
                     request.form.get("permission_level", "everyone"),
                     request.form.get("enabled") == "on",
                     json.dumps(aliases) if aliases else None
@@ -453,8 +508,8 @@ def commands_page():
             """, (
                 name,
                 request.form.get("response"),
-                int(request.form.get("cooldown_user", 5)),
-                int(request.form.get("cooldown_global", 0)),
+                safe_int(request.form.get("cooldown_user"), default=5, min_val=0, max_val=3600),
+                safe_int(request.form.get("cooldown_global"), default=0, min_val=0, max_val=3600),
                 request.form.get("permission_level", "everyone"),
                 request.form.get("enabled") == "on",
                 json.dumps(aliases) if aliases else None,
@@ -495,8 +550,8 @@ def timers_page():
                 """, (
                     name,
                     request.form.get("message"),
-                    int(request.form.get("interval_minutes", 15)),
-                    int(request.form.get("chat_lines_required", 5)),
+                    safe_int(request.form.get("interval_minutes"), default=15, min_val=5, max_val=120),
+                    safe_int(request.form.get("chat_lines_required"), default=5, min_val=0, max_val=100),
                     request.form.get("online_only") == "on",
                     request.form.get("enabled") == "on",
                     "dashboard"
@@ -516,8 +571,8 @@ def timers_page():
             """, (
                 name,
                 request.form.get("message"),
-                int(request.form.get("interval_minutes", 15)),
-                int(request.form.get("chat_lines_required", 5)),
+                safe_int(request.form.get("interval_minutes"), default=15, min_val=5, max_val=120),
+                safe_int(request.form.get("chat_lines_required"), default=5, min_val=0, max_val=100),
                 request.form.get("online_only") == "on",
                 request.form.get("enabled") == "on",
                 original_name
@@ -705,42 +760,42 @@ def filters_page():
                 request.form.get("global_sensitivity", "medium"),
                 # Caps filter
                 request.form.get("caps_enabled") == "on",
-                int(request.form.get("caps_min_length", 10)),
-                int(request.form.get("caps_max_percent", 70)),
+                safe_int(request.form.get("caps_min_length"), default=10, min_val=1, max_val=500),
+                safe_int(request.form.get("caps_max_percent"), default=70, min_val=1, max_val=100),
                 request.form.get("caps_action", "timeout"),
-                int(request.form.get("caps_duration", 60)),
+                safe_int(request.form.get("caps_duration"), default=60, min_val=1, max_val=86400),
                 # Emote filter
                 request.form.get("emote_enabled") == "on",
-                int(request.form.get("emote_max_count", 15)),
+                safe_int(request.form.get("emote_max_count"), default=15, min_val=1, max_val=100),
                 request.form.get("emote_action", "timeout"),
-                int(request.form.get("emote_duration", 60)),
+                safe_int(request.form.get("emote_duration"), default=60, min_val=1, max_val=86400),
                 # Symbol filter
                 request.form.get("symbol_enabled") == "on",
-                int(request.form.get("symbol_max_percent", 50)),
+                safe_int(request.form.get("symbol_max_percent"), default=50, min_val=1, max_val=100),
                 request.form.get("symbol_action", "timeout"),
-                int(request.form.get("symbol_duration", 60)),
+                safe_int(request.form.get("symbol_duration"), default=60, min_val=1, max_val=86400),
                 # Link filter
                 request.form.get("link_enabled") == "on",
                 request.form.get("link_action", "delete"),
-                int(request.form.get("link_duration", 60)),
+                safe_int(request.form.get("link_duration"), default=60, min_val=1, max_val=86400),
                 # Length filter
                 request.form.get("length_enabled") == "on",
-                int(request.form.get("length_max_chars", 500)),
+                safe_int(request.form.get("length_max_chars"), default=500, min_val=50, max_val=2000),
                 request.form.get("length_action", "delete"),
-                int(request.form.get("length_duration", 60)),
+                safe_int(request.form.get("length_duration"), default=60, min_val=1, max_val=86400),
                 # Repetition filter
                 request.form.get("repetition_enabled") == "on",
-                int(request.form.get("repetition_max_words", 10)),
+                safe_int(request.form.get("repetition_max_words"), default=10, min_val=2, max_val=50),
                 request.form.get("repetition_action", "timeout"),
-                int(request.form.get("repetition_duration", 60)),
+                safe_int(request.form.get("repetition_duration"), default=60, min_val=1, max_val=86400),
                 # Zalgo filter
                 request.form.get("zalgo_enabled") == "on",
                 request.form.get("zalgo_action", "delete"),
-                int(request.form.get("zalgo_duration", 60)),
+                safe_int(request.form.get("zalgo_duration"), default=60, min_val=1, max_val=86400),
                 # Lookalike filter
                 request.form.get("lookalike_enabled") == "on",
                 request.form.get("lookalike_action", "delete"),
-                int(request.form.get("lookalike_duration", 60))
+                safe_int(request.form.get("lookalike_duration"), default=60, min_val=1, max_val=86400)
             ))
             conn.commit()
             flash("Filter settings saved!", "success")
@@ -1009,15 +1064,10 @@ def credentials():
         "channels": get_env_value("TWITCH_CHANNELS"),
         "owner": get_env_value("BOT_OWNER"),
     }
-    
-    # Real values for toggle (only sent to authenticated users)
-    real_creds = {
-        "client_id": get_env_value("TWITCH_CLIENT_ID"),
-        "client_secret": get_env_value("TWITCH_CLIENT_SECRET"),
-        "oauth_token": get_env_value("TWITCH_OAUTH_TOKEN"),
-    }
-    
-    return render_template("credentials.html", credentials=current_creds, real_credentials=real_creds)
+
+    # SECURITY: Never send real credentials to browser
+    return render_template("credentials.html", credentials=current_creds)
+
 
 @app.route("/modlog")
 @login_required
@@ -1707,7 +1757,6 @@ def giveaways_page():
                 ends_at = None
                 if duration and int(duration) > 0:
                     from datetime import datetime, timedelta
-                    ends_at = (datetime.now() + timedelta(minutes=int(duration))).isoformat()
                 
                 cursor.execute("""
                     INSERT INTO giveaways (channel, keyword, prize, started_by, ends_at, winner_count, sub_luck_multiplier, sub_only, min_points)
@@ -3518,9 +3567,9 @@ def update_prediction_settings():
         """, (
             channel.lower(),
             data.get("enabled", True),
-            int(data.get("prediction_window", 120)),
-            int(data.get("min_bet", 10)),
-            int(data.get("max_bet", 10000))
+            safe_int(data.get("prediction_window"), default=120, min_val=30, max_val=600),
+            safe_int(data.get("min_bet"), default=10, min_val=1, max_val=10000),
+            safe_int(data.get("max_bet"), default=10000, min_val=10, max_val=1000000)
         ))
         
         conn.commit()
@@ -3673,7 +3722,7 @@ def api_polls_create():
     data = request.get_json()
     question = data.get("question", "").strip()
     options = data.get("options", [])
-    duration = int(data.get("duration", 60))
+    duration = safe_int(data.get("duration"), default=60, min_val=10, max_val=600)
     
     if not question or len(options) < 2:
         return jsonify({"success": False, "error": "Invalid poll data"}), 400
@@ -3754,7 +3803,7 @@ def api_polls_settings():
     
     data = request.get_json()
     enabled = data.get("enabled", True)
-    default_duration = int(data.get("default_duration", 60))
+    default_duration = safe_int(data.get("default_duration"), default=60, min_val=10, max_val=600)
     
     cursor.execute("""
         INSERT INTO poll_settings (channel, enabled, default_duration)

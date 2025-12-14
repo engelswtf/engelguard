@@ -18,6 +18,9 @@ from twitchio.ext import commands
 from twitchio.ext.commands import Context
 
 from bot.utils.database import get_database, DatabaseManager
+
+# Points cap to prevent integer overflow
+MAX_POINTS = 100_000_000  # 100 million cap
 from bot.utils.logging import get_logger
 from bot.utils.permissions import is_owner, is_moderator
 
@@ -54,6 +57,33 @@ class Loyalty(commands.Cog):
         self._running = False
         
         logger.info("Loyalty cog initialized")
+
+    def _add_points_capped(self, user_id: str, username: str, channel: str, points_delta: float, **kwargs) -> None:
+        """Add points with cap enforcement."""
+        # Get current points to check cap
+        current = self.db.get_user_loyalty(user_id, channel)
+        current_points = current.get("points", 0)
+        
+        # Calculate new points with cap
+        if points_delta > 0:
+            # Cap the addition so we dont exceed MAX_POINTS
+            max_addable = MAX_POINTS - current_points
+            points_delta = min(points_delta, max(0, max_addable))
+        
+        if points_delta != 0:
+            self.db.update_user_loyalty(
+                user_id=user_id,
+                username=username,
+                channel=channel,
+                points_delta=points_delta,
+                **kwargs
+            )
+
+    def _set_points_capped(self, user_id: str, channel: str, points: float) -> None:
+        """Set points with cap enforcement."""
+        # Clamp to valid range
+        points = max(0, min(MAX_POINTS, points))
+        self.db.set_user_points(user_id, channel, points)
     
     async def cog_load(self) -> None:
         """Called when cog is loaded."""
@@ -102,7 +132,7 @@ class Loyalty(commands.Cog):
             
             for user_id in active:
                 # Award points (we don't have sub/vip info here, so base rate)
-                self.db.update_user_loyalty(
+                self._add_points_capped(
                     user_id=user_id,
                     username="",  # Will be updated on next message
                     channel=channel_name,
@@ -148,7 +178,7 @@ class Loyalty(commands.Cog):
         
         points = points_per_message * multiplier
         
-        self.db.update_user_loyalty(
+        self._add_points_capped(
             user_id=user_id,
             username=username,
             channel=channel_name,
@@ -336,7 +366,7 @@ class Loyalty(commands.Cog):
         target_name = username.lstrip("@").lower()
         target_id = target_name  # Simplified
         
-        self.db.update_user_loyalty(
+        self._add_points_capped(
             user_id=target_id,
             username=target_name,
             channel=channel_name,
@@ -370,7 +400,7 @@ class Loyalty(commands.Cog):
         target_name = username.lstrip("@").lower()
         target_id = target_name
         
-        self.db.update_user_loyalty(
+        self._add_points_capped(
             user_id=target_id,
             username=target_name,
             channel=channel_name,
@@ -393,7 +423,7 @@ class Loyalty(commands.Cog):
         target_name = username.lstrip("@").lower()
         target_id = target_name
         
-        self.db.set_user_points(target_id, channel_name, 0)
+        self._set_points_capped(target_id, channel_name, 0)
         
         await ctx.send(f"@{ctx.author.name} Reset points for {target_name}")
         logger.info("%s reset points for %s", ctx.author.name, target_name)

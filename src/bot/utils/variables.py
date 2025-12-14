@@ -22,6 +22,10 @@ from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING, Optional, Any, Callable, Awaitable
 
 import aiohttp
+# DoS Protection Limits
+MAX_VARIABLE_EXPANSIONS = 50  # Max variables per message
+MAX_RESPONSE_LENGTH = 500  # Max output length
+
 
 from bot.utils.logging import get_logger
 
@@ -109,6 +113,12 @@ class VariableParser:
         
         # Reset urlfetch counter for this parse
         self._urlfetch_count = 0
+
+        # Count total variables to prevent DoS
+        variable_count = len(self.VARIABLE_PATTERN.findall(template))
+        if variable_count > MAX_VARIABLE_EXPANSIONS:
+            logger.warning("Variable expansion limit exceeded: %d variables", variable_count)
+            return f"Error: Too many variables ({variable_count} > {MAX_VARIABLE_EXPANSIONS})"
         
         # Rate limit urlfetch calls - warn if too many
         urlfetch_count = template.lower().count("$(urlfetch")
@@ -184,6 +194,10 @@ class VariableParser:
             replacement = await self._resolve_variable(var_content, context, channel_name)
             result = result[:match.start()] + replacement + result[match.end():]
         
+
+        # Truncate final result to prevent oversized responses
+        if len(result) > MAX_RESPONSE_LENGTH:
+            result = result[:MAX_RESPONSE_LENGTH - 3] + "..."
         return result
     
     async def _resolve_variable(

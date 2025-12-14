@@ -13,6 +13,7 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from datetime import datetime, timezone
@@ -98,6 +99,9 @@ class ShoutoutCog(commands.Cog):
 
         # HTTP session for API calls
         self._session: Optional[aiohttp.ClientSession] = None
+        
+        # API rate limiting - max 5 concurrent API calls to prevent hitting Twitch rate limits
+        self._api_semaphore: asyncio.Semaphore = asyncio.Semaphore(5)
 
         # Initialize database tables
         self._init_database()
@@ -368,6 +372,8 @@ class ShoutoutCog(commands.Cog):
     async def _get_last_game(self, username: str) -> str:
         """
         Get the last game played by a user from Twitch API.
+        
+        Uses semaphore to limit concurrent API calls and prevent rate limiting.
 
         Args:
             username: Twitch username
@@ -375,51 +381,52 @@ class ShoutoutCog(commands.Cog):
         Returns:
             Game name or "an awesome game" if not found
         """
-        try:
-            token = await self._get_app_access_token()
-            if not token:
+        async with self._api_semaphore:
+            try:
+                token = await self._get_app_access_token()
+                if not token:
+                    return "an awesome game"
+
+                session = await self._get_session()
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Client-Id": self.bot.config.client_id,
+                }
+
+                # First, get user ID
+                users = await self.bot.fetch_users(names=[username])
+                if not users:
+                    return "an awesome game"
+
+                user_id = str(users[0].id)
+
+                # Check if they're currently live
+                async with session.get(
+                    "https://api.twitch.tv/helix/streams",
+                    headers=headers,
+                    params={"user_login": username},
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("data"):
+                            return data["data"][0].get("game_name", "an awesome game")
+
+                # If not live, get channel info for last game
+                async with session.get(
+                    "https://api.twitch.tv/helix/channels",
+                    headers=headers,
+                    params={"broadcaster_id": user_id},
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("data"):
+                            return data["data"][0].get("game_name", "an awesome game")
+
                 return "an awesome game"
 
-            session = await self._get_session()
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Client-Id": self.bot.config.client_id,
-            }
-
-            # First, get user ID
-            users = await self.bot.fetch_users(names=[username])
-            if not users:
+            except Exception as e:
+                logger.error("Error fetching last game for %s: %s", username, e)
                 return "an awesome game"
-
-            user_id = str(users[0].id)
-
-            # Check if they're currently live
-            async with session.get(
-                "https://api.twitch.tv/helix/streams",
-                headers=headers,
-                params={"user_login": username},
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("data"):
-                        return data["data"][0].get("game_name", "an awesome game")
-
-            # If not live, get channel info for last game
-            async with session.get(
-                "https://api.twitch.tv/helix/channels",
-                headers=headers,
-                params={"broadcaster_id": user_id},
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("data"):
-                        return data["data"][0].get("game_name", "an awesome game")
-
-            return "an awesome game"
-
-        except Exception as e:
-            logger.error("Error fetching last game for %s: %s", username, e)
-            return "an awesome game"
 
     # ==================== Variable Parsing ====================
 

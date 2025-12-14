@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import json
 import os
 import random
@@ -178,17 +179,35 @@ class DashboardSession:
         self.password = password
         self.session = requests.Session()
         self._logged_in = False
+        self._csrf_token = ""
     
     def login(self) -> bool:
-        """Authenticate with the dashboard."""
+        """Authenticate with the dashboard (with CSRF token)."""
         try:
+            # First get the login page to get CSRF token
+            login_page = self.session.get(f"{self.base_url}/login")
+            
+            # Extract CSRF token from the page
+            csrf_match = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', login_page.text)
+            if not csrf_match:
+                csrf_match = re.search(r'value="([^"]+)"[^>]*name="csrf_token"', login_page.text)
+            csrf_token = csrf_match.group(1) if csrf_match else ""
+            
             response = self.session.post(
                 f"{self.base_url}/login",
-                data={"password": self.password},
+                data={"password": self.password, "csrf_token": csrf_token},
                 allow_redirects=False
             )
             # Successful login redirects to dashboard
             self._logged_in = response.status_code in (302, 303)
+            if self._logged_in:
+                # Get a fresh CSRF token from dashboard page
+                dash = self.session.get(f"{self.base_url}/dashboard")
+                csrf_match = re.search(r'name="csrf[_-]token"[^>]*content="([^"]+)"', dash.text)
+                if not csrf_match:
+                    csrf_match = re.search(r'csrf[_-]token"[^>]*value="([^"]+)"', dash.text)
+                if csrf_match:
+                    self._csrf_token = csrf_match.group(1)
             return self._logged_in
         except requests.RequestException:
             return False
@@ -198,20 +217,28 @@ class DashboardSession:
         return self.session.get(f"{self.base_url}{endpoint}", **kwargs)
     
     def post(self, endpoint: str, **kwargs) -> requests.Response:
-        """Make authenticated POST request."""
+        """Make authenticated POST request with CSRF token."""
+        # Add CSRF token to form data
+        if "data" in kwargs:
+            if isinstance(kwargs["data"], dict):
+                kwargs["data"]["csrf_token"] = self._csrf_token
+        else:
+            kwargs["data"] = {"csrf_token": self._csrf_token}
         return self.session.post(f"{self.base_url}{endpoint}", **kwargs)
     
     def post_json(self, endpoint: str, data: dict) -> requests.Response:
-        """Make authenticated POST request with JSON body."""
+        """Make authenticated POST request with JSON body and CSRF token."""
         return self.session.post(
             f"{self.base_url}{endpoint}",
             json=data,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "X-CSRFToken": self._csrf_token}
         )
     
     def delete(self, endpoint: str, **kwargs) -> requests.Response:
-        """Make authenticated DELETE request."""
-        return self.session.delete(f"{self.base_url}{endpoint}", **kwargs)
+        """Make authenticated DELETE request with CSRF token."""
+        headers = kwargs.pop("headers", {})
+        headers["X-CSRFToken"] = self._csrf_token
+        return self.session.delete(f"{self.base_url}{endpoint}", headers=headers, **kwargs)
 
 
 # ==================== Original Test Functions ====================
