@@ -46,6 +46,13 @@ ENV_FILE = Path(__file__).parent.parent / ".env"
 load_dotenv(ENV_FILE)
 
 app = Flask(__name__)
+
+# Custom Jinja2 filters
+@app.template_filter('split')
+def split_filter(s, sep=','):
+    """Split a string by separator."""
+    return s.split(sep) if s else []
+
 app.secret_key = os.getenv("DASHBOARD_SECRET_KEY", secrets.token_hex(32))
 app.permanent_session_lifetime = timedelta(hours=1)
 
@@ -1596,8 +1603,17 @@ def toggle_cog(cog_name: str):
         if not channel:
             return jsonify({"success": False, "error": "No channel configured"}), 400
         
-        data = request.get_json() or {}
-        enabled = data.get("enabled")
+        # Accept both JSON and form data
+        if request.is_json:
+            data = request.get_json() or {}
+        else:
+            data = request.form.to_dict()
+        
+        enabled_val = data.get("enabled")
+        if enabled_val is not None:
+            enabled = enabled_val in [True, "true", "1", 1, "on"]
+        else:
+            enabled = None
         
         # If enabled not specified, toggle current state
         if enabled is None:
