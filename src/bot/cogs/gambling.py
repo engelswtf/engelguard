@@ -156,7 +156,7 @@ class Gambling(commands.Cog):
             return True, new_balance, ""
 
     def _clean_expired_duels(self, channel: str) -> None:
-        """Remove expired duels for a channel."""
+        """Remove expired duels and refund escrowed points."""
         if channel not in self._pending_duels:
             return
 
@@ -167,6 +167,11 @@ class Gambling(commands.Cog):
             if duel["expires"] <= now
         ]
         for challenger in expired:
+            duel = self._pending_duels[channel][challenger]
+            # SECURITY FIX: Refund escrowed points on expiry
+            if duel.get("escrowed"):
+                self._update_points(duel["challenger_id"], challenger, channel, duel["amount"])
+                logger.info("Refunded %d points to %s for expired duel", duel["amount"], challenger)
             del self._pending_duels[channel][challenger]
 
     @commands.command(name="slots", aliases=["slot"])
@@ -398,13 +403,28 @@ class Gambling(commands.Cog):
             await ctx.send(f"@{ctx.author.name} You can't duel yourself!")
             return
 
-        valid, bet, error = self._validate_bet(amount, user_id, channel)
-        if not valid:
-            await ctx.send(f"@{ctx.author.name} {error}")
+        # Parse bet amount
+        try:
+            bet = int(amount)
+        except ValueError:
+            await ctx.send(f"@{ctx.author.name} Invalid amount. Use a number.")
             return
 
-        # Clean expired duels
+        if bet < self.min_bet:
+            await ctx.send(f"@{ctx.author.name} Minimum bet is {self.min_bet} points.")
+            return
+        if bet > self.max_bet:
+            await ctx.send(f"@{ctx.author.name} Maximum bet is {self.max_bet} points.")
+            return
+
+        # Clean expired duels first (refunds escrowed points)
         self._clean_expired_duels(channel)
+
+        # SECURITY FIX: Atomically deduct points NOW (escrow)
+        success, balance, error = self._atomic_bet_deduct(user_id, channel, bet)
+        if not success:
+            await ctx.send(f"@{ctx.author.name} {error}")
+            return
 
         # Check if challenger already has a pending duel
         if channel in self._pending_duels and challenger in self._pending_duels[channel]:
@@ -419,6 +439,8 @@ class Gambling(commands.Cog):
             "target": target,
             "amount": bet,
             "challenger_id": user_id,
+            "challenger_name": challenger,
+            "escrowed": True,  # Points already deducted
             "expires": datetime.now(timezone.utc) + timedelta(minutes=2)
         }
 
@@ -453,17 +475,14 @@ class Gambling(commands.Cog):
             await ctx.send(f"@{ctx.author.name} No pending duel for you!")
             return
 
-        # Check if accepter has enough points
+        # SECURITY FIX: Atomically deduct accepter's points
         user_id = str(ctx.author.id)
-        current = self._get_points(user_id, channel)
-        if current < duel["amount"]:
-            await ctx.send(
-                f"@{ctx.author.name} You don't have enough points! "
-                f"({int(current)}/{duel['amount']})"
-            )
+        success, balance, error = self._atomic_bet_deduct(user_id, channel, duel["amount"])
+        if not success:
+            await ctx.send(f"@{ctx.author.name} {error}")
             return
 
-        # Fight!
+        # Both players have now paid - remove pending duel
         del self._pending_duels[channel][challenger]
 
         if random.random() < 0.5:
@@ -478,8 +497,10 @@ class Gambling(commands.Cog):
             loser_id = user_id
 
         amount = duel["amount"]
-        self._update_points(winner_id, winner, channel, amount)
-        self._update_points(loser_id, loser, channel, -amount)
+        # Both players already paid (escrowed), so winner gets 2x the bet
+        # Winner gets their bet back + loser's bet = 2 * amount
+        self._update_points(winner_id, winner, channel, amount * 2)
+        # Loser already paid, nothing more to deduct
 
         await ctx.send(f"⚔️ DUEL: @{winner} defeats @{loser} and wins {amount} points! ⚔️")
 
@@ -502,8 +523,12 @@ class Gambling(commands.Cog):
             await ctx.send(f"@{ctx.author.name} You don't have a pending duel.")
             return
 
+        duel = self._pending_duels[channel][challenger]
+        # SECURITY FIX: Refund escrowed points on cancel
+        if duel.get("escrowed"):
+            self._update_points(duel["challenger_id"], challenger, channel, duel["amount"])
         del self._pending_duels[channel][challenger]
-        await ctx.send(f"@{ctx.author.name} Your duel challenge has been cancelled.")
+        await ctx.send(f"@{ctx.author.name} Your duel challenge has been cancelled and points refunded.")
 
     @commands.command(name="gamblingtoggle")
     @is_moderator()
