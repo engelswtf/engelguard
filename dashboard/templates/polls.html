@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Polls - EngelGuard{% endblock %}
+{% block page_title %}Polls{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-info">
+        <p class="header-subtitle">Create and manage channel polls</p>
+    </div>
+</div>
+
+<!-- Active Poll -->
+{% if active_poll %}
+<div class="card">
+    <div class="card-header">
+        <h2>📊 Active Poll</h2>
+        <span class="badge badge-success">ACTIVE</span>
+    </div>
+    <div class="card-body">
+        <h3 style="margin-bottom: 1rem;">{{ active_poll.question }}</h3>
+        
+        {% set options_json = active_poll.options %}
+        {% if options_json is string %}
+            {% set options_list = options_json | replace('[', '') | replace(']', '') | replace('"', '') | split(',') %}
+        {% else %}
+            {% set options_list = options_json %}
+        {% endif %}
+        
+        <div class="stats-grid" style="margin-bottom: 1.5rem;">
+            {% for i in range(options_list|length) %}
+            <div class="stat-card">
+                <div class="stat-value">{{ votes_by_option.get(i, 0) }}</div>
+                <div class="stat-label">[{{ i + 1 }}] {{ options_list[i] | trim if options_list[i] is string else options_list[i] }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="btn-group">
+            <button class="btn btn-success" onclick="endPoll({{ active_poll.id }})">✓ End Poll</button>
+            <button class="btn btn-danger" onclick="cancelPoll({{ active_poll.id }})">✕ Cancel</button>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <div class="empty-state-icon">📊</div>
+            <h3>No Active Poll</h3>
+            <p>Create a poll to engage your viewers</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Create Poll -->
+<div class="card">
+    <div class="card-header">
+        <h2>Create New Poll</h2>
+    </div>
+    <div class="card-body">
+        <form id="createPollForm" onsubmit="createPoll(event)">
+            <div class="form-group">
+                <label>Question</label>
+                <input type="text" id="pollQuestion" class="form-control" required 
+                       placeholder="What should we play next?" maxlength="200">
+            </div>
+            
+            <div class="form-group">
+                <label>Options</label>
+                <div id="optionsContainer">
+                    <input type="text" class="form-control poll-option-input" required placeholder="Option 1" style="margin-bottom: 0.5rem;">
+                    <input type="text" class="form-control poll-option-input" required placeholder="Option 2" style="margin-bottom: 0.5rem;">
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addPollOption()">+ Add Option</button>
+            </div>
+            
+            <div class="form-group">
+                <label>Duration</label>
+                <select id="pollDuration" class="form-control">
+                    <option value="60">1 minute</option>
+                    <option value="120" selected>2 minutes</option>
+                    <option value="300">5 minutes</option>
+                    <option value="0">No limit</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" {% if active_poll %}disabled{% endif %}>
+                📊 Start Poll
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Poll History -->
+<div class="card">
+    <div class="card-header">
+        <h2>Poll History</h2>
+    </div>
+    <div class="card-body">
+        {% if poll_history %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Question</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for poll in poll_history %}
+                <tr>
+                    <td>{{ poll.question[:50] }}{% if poll.question|length > 50 %}...{% endif %}</td>
+                    <td>
+                        {% if poll.status == 'ended' %}
+                        <span class="badge badge-success">Ended</span>
+                        {% elif poll.status == 'cancelled' %}
+                        <span class="badge badge-danger">Cancelled</span>
+                        {% elif poll.status == 'active' %}
+                        <span class="badge badge-warning">Active</span>
+                        {% else %}
+                        <span class="badge badge-secondary">{{ poll.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ poll.started_at[:16] if poll.started_at else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No poll history yet</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Settings -->
+<div class="card">
+    <div class="card-header">
+        <h2>⚙️ Poll Settings</h2>
+        <label class="toggle">
+            <input type="checkbox" id="pollsEnabled" {% if settings and settings.enabled %}checked{% endif %} onchange="savePollSettings()">
+            <span class="toggle-slider"></span>
+        </label>
+    </div>
+    <div class="card-body">
+        <div class="form-group">
+            <label>Default Duration</label>
+            <select id="defaultDuration" class="form-control" onchange="savePollSettings()">
+                <option value="60" {% if settings and settings.default_duration == 60 %}selected{% endif %}>1 minute</option>
+                <option value="120" {% if settings and settings.default_duration == 120 or not settings %}selected{% endif %}>2 minutes</option>
+                <option value="300" {% if settings and settings.default_duration == 300 %}selected{% endif %}>5 minutes</option>
+            </select>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let optionCount = 2;
+
+function addPollOption() {
+    if (optionCount >= 5) {
+        showNotification('Maximum 5 options', 'warning');
+        return;
+    }
+    optionCount++;
+    const container = document.getElementById('optionsContainer');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control poll-option-input';
+    input.placeholder = 'Option ' + optionCount;
+    input.required = true;
+    input.style.marginBottom = '0.5rem';
+    container.appendChild(input);
+}
+
+function createPoll(e) {
+    e.preventDefault();
+    const question = document.getElementById('pollQuestion').value.trim();
+    const options = Array.from(document.querySelectorAll('.poll-option-input'))
+        .map(i => i.value.trim())
+        .filter(v => v);
+    const duration = parseInt(document.getElementById('pollDuration').value);
+    
+    if (options.length < 2) {
+        showNotification('Need at least 2 options', 'error');
+        return;
+    }
+    
+    fetch('/api/polls/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({question, options, duration})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Poll created!', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification(data.error || 'Failed to create poll', 'error');
+        }
+    })
+    .catch(err => showNotification('Error: ' + err, 'error'));
+}
+
+function endPoll(pollId) {
+    fetch('/api/polls/' + pollId + '/end', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Poll ended!', 'success');
+            setTimeout(() => location.reload(), 1000);
+        }
+    });
+}
+
+function cancelPoll(pollId) {
+    if (!confirm('Cancel this poll?')) return;
+    fetch('/api/polls/' + pollId + '/cancel', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Poll cancelled', 'info');
+            setTimeout(() => location.reload(), 1000);
+        }
+    });
+}
+
+function savePollSettings() {
+    const enabled = document.getElementById('pollsEnabled').checked;
+    const defaultDuration = parseInt(document.getElementById('defaultDuration').value);
+    
+    fetch('/api/polls/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled, default_duration: defaultDuration})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) showNotification('Settings saved', 'success');
+    });
+}
+</script>
+{% endblock %}

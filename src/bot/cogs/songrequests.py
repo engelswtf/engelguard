@@ -63,6 +63,30 @@ def extract_video_id(query: str) -> Optional[str]:
     return None
 
 
+def normalize_video_id(url_or_id: str) -> Optional[str]:
+    """
+    Bug 5 FIX: Normalize video ID from any YouTube URL format.
+    
+    This ensures blacklist checks work regardless of URL format:
+    - youtube.com/watch?v=XXX
+    - youtu.be/XXX
+    - youtube.com/embed/XXX
+    - youtube.com/v/XXX
+    - youtube.com/shorts/XXX
+    - With or without www
+    - With various query parameters
+    
+    Returns:
+        The 11-character video ID, or None if not found
+    """
+    # If it looks like just an ID (11 chars, valid characters), return it
+    if re.match(r'^[a-zA-Z0-9_-]{11}$', url_or_id):
+        return url_or_id
+    
+    # Otherwise extract from URL
+    return extract_video_id(url_or_id)
+
+
 def get_youtube_info(query: str) -> Optional[dict[str, Any]]:
     """
     Get YouTube video info from URL or search query.
@@ -419,13 +443,22 @@ class SongRequests(commands.Cog):
             return dict(row) if row else None
     
     def is_song_blacklisted(self, channel: str, video_id: str) -> bool:
-        """Check if a song is blacklisted."""
+        """Check if a song is blacklisted.
+        
+        Bug 5 FIX: Normalizes video ID before checking to prevent bypass
+        via different URL formats (youtu.be vs youtube.com, etc.)
+        """
+        # Normalize the video ID to handle different URL formats
+        normalized_id = normalize_video_id(video_id) if video_id else None
+        if not normalized_id:
+            return False
+        
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT 1 FROM song_blacklist 
                 WHERE channel = ? AND video_id = ?
-            """, (channel.lower(), video_id))
+            """, (channel.lower(), normalized_id))
             return cursor.fetchone() is not None
     
     def add_to_blacklist(

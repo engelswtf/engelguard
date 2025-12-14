@@ -25,7 +25,8 @@
         </label>
     </div>
     <div class="card-body">
-        <form method="POST" id="settingsForm">
+        <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> id="settingsForm">
             <input type="hidden" name="action" value="settings">
             
             <div class="settings-grid">
@@ -226,7 +227,8 @@
             <h2>Add to Blacklist</h2>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-        <form method="POST" id="blacklistForm">
+        <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> id="blacklistForm">
             <input type="hidden" name="action" value="blacklist">
             
             <div class="form-group">

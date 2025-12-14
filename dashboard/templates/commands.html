@@ -81,6 +81,7 @@
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
         <form id="commandForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>>
             <input type="hidden" name="action" id="formAction" value="add">
             <input type="hidden" name="original_name" id="originalName">
             

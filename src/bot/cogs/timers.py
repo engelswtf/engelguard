@@ -46,8 +46,9 @@ class Timers(commands.Cog):
         self.db: DatabaseManager = get_database()
         self.parser: VariableParser = get_variable_parser(bot)
         
-        # Track chat activity per channel
-        self._chat_lines: dict[str, int] = {}
+        # Track chat activity per channel per timer
+        # Structure: {channel_name: {timer_name: line_count}}
+        self._chat_lines: dict[str, dict[str, int]] = {}
         self._last_timer_check: dict[str, datetime] = {}
         
         # Timer task
@@ -119,16 +120,18 @@ class Timers(commands.Cog):
             for channel in self.bot.connected_channels:
                 channel_name = channel.name
                 
-                # Check chat activity
-                chat_lines = self._chat_lines.get(channel_name, 0)
+                # Check chat activity for this specific timer
+                channel_timers = self._chat_lines.get(channel_name, {})
+                chat_lines = channel_timers.get(name, 0)
                 if chat_lines < chat_required:
                     continue
                 
                 # Trigger the timer
                 await self._trigger_timer(timer, channel)
                 
-                # Reset chat counter for this channel
-                self._chat_lines[channel_name] = 0
+                # Reset chat counter only for this specific timer
+                if channel_name in self._chat_lines:
+                    self._chat_lines[channel_name][name] = 0
                 
                 # Update last triggered
                 self.db.update_timer_triggered(name)
@@ -161,7 +164,16 @@ class Timers(commands.Cog):
             return
         
         channel_name = message.channel.name
-        self._chat_lines[channel_name] = self._chat_lines.get(channel_name, 0) + 1
+        
+        # Initialize channel dict if needed
+        if channel_name not in self._chat_lines:
+            self._chat_lines[channel_name] = {}
+        
+        # Increment counter for all enabled timers
+        timers = self.db.get_enabled_timers()
+        for timer in timers:
+            timer_name = timer["name"]
+            self._chat_lines[channel_name][timer_name] = self._chat_lines[channel_name].get(timer_name, 0) + 1
     
     @commands.command(name="addtimer")
     @is_moderator()

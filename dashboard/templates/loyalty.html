@@ -20,7 +20,8 @@
         </label>
     </div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('loyalty_page') }}" id="loyaltyForm">
+        <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('loyalty_page') }}" id="loyaltyForm">
             <input type="hidden" name="action" value="settings">
             
             <div class="form-row">
@@ -109,7 +110,8 @@
             <h3>Adjust Points: <span id="adjustUsername"></span></h3>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-        <form method="POST" action="{{ url_for('loyalty_page') }}">
+        <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('loyalty_page') }}">
             <input type="hidden" name="action" value="adjust">
             <input type="hidden" name="user_id" id="adjustUserId">
             

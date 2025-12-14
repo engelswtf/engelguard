@@ -19,13 +19,15 @@
     <div class="card-body">
         <p class="filter-description">Manually enable or disable raid protection mode. These controls work independently of automatic detection.</p>
         <div class="action-buttons" style="display: flex; gap: 1rem; margin-top: 1rem;">
-            <form method="POST" action="{{ url_for('raid_settings') }}" style="display: inline;">
+            <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('raid_settings') }}" style="display: inline;">
                 <input type="hidden" name="action" value="enable_protection">
                 <button type="submit" class="btn btn-warning">
                     <span>🛡️</span> Enable Protection Now
                 </button>
             </form>
-            <form method="POST" action="{{ url_for('raid_settings') }}" style="display: inline;">
+            <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('raid_settings') }}" style="display: inline;">
                 <input type="hidden" name="action" value="disable_protection">
                 <button type="submit" class="btn btn-secondary">
                     <span>✓</span> Disable Protection
@@ -35,7 +37,8 @@
     </div>
 </div>
 
-<form method="POST" action="{{ url_for('raid_settings') }}" id="raidSettingsForm">
+<form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('raid_settings') }}" id="raidSettingsForm">
 <input type="hidden" name="action" value="save_settings">
 
 <!-- Main Toggle Card -->

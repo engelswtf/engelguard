@@ -30,6 +30,56 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+# Maximum regex pattern length to prevent complexity attacks
+MAX_REGEX_LENGTH = 100
+REGEX_TIMEOUT = 1.0
+
+
+def is_safe_regex(pattern: str) -> tuple[bool, str]:
+    """Validate regex pattern for potential ReDoS vulnerabilities."""
+    if len(pattern) > MAX_REGEX_LENGTH:
+        return False, f"Pattern too long (max {MAX_REGEX_LENGTH} characters)"
+    
+    # Check for nested quantifiers - common ReDoS pattern
+    nested_patterns = [
+        r'\([^)]*[+*][^)]*\)[+*]',
+        r'\([^)]*\|[^)]*[+*][^)]*\)[+*]',
+    ]
+    
+    for dangerous in nested_patterns:
+        if re.search(dangerous, pattern):
+            return False, "Pattern contains potentially dangerous nested quantifiers"
+    
+    quantifier_count = len(re.findall(r'[+*?]', pattern))
+    if quantifier_count > 10:
+        return False, "Pattern contains too many quantifiers"
+    
+    try:
+        compiled = re.compile(pattern, re.IGNORECASE)
+        compiled.search("test" * 10)
+    except re.error as e:
+        return False, f"Invalid regex pattern: {e}"
+    
+    return True, ""
+
+
+def safe_regex_search(pattern: str, text: str, timeout: float = REGEX_TIMEOUT):
+    """Perform regex search with safety limits."""
+    try:
+        import regex as regex_module
+        try:
+            compiled = regex_module.compile(pattern, regex_module.IGNORECASE, timeout=timeout)
+            return compiled.search(text)
+        except regex_module.TimeoutError:
+            return None
+    except ImportError:
+        max_text_length = 1000
+        truncated_text = text[:max_text_length]
+        compiled = re.compile(pattern, re.IGNORECASE)
+        return compiled.search(truncated_text)
+
+
+
 class NukeManager:
     """Manages the nuke command functionality."""
     
@@ -63,7 +113,7 @@ class NukeManager:
         is_regex: bool,
         include_subs: bool,
         include_vips: bool
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], Optional[str]]:
         """Find users matching pattern in recent messages."""
         # Get recent messages
         messages = self.db.get_recent_messages(
@@ -76,13 +126,14 @@ class NukeManager:
         matches: dict[str, dict[str, Any]] = {}  # {user_id: {username, message}}
         
         if is_regex:
-            try:
-                regex = re.compile(pattern, re.IGNORECASE)
-            except re.error:
-                return []
+            # Validate regex pattern for safety (ReDoS protection)
+            is_safe, error = is_safe_regex(pattern)
+            if not is_safe:
+                return [], error
             
             for msg in messages:
-                if regex.search(msg["message"]):
+                result = safe_regex_search(pattern, msg["message"])
+                if result:
                     user_id = msg["user_id"]
                     if user_id not in matches:
                         matches[user_id] = {
@@ -104,7 +155,7 @@ class NukeManager:
         
         # Limit to max users
         result = list(matches.values())[:self.max_users]
-        return result
+        return result, None
 
 
 class Nuke(commands.Cog):
@@ -188,7 +239,7 @@ class Nuke(commands.Cog):
             return
         
         # Find matches
-        matches = self.manager.find_matches(
+        matches, error = self.manager.find_matches(
             channel=channel_name,
             pattern=pattern,
             lookback=options.get("lookback", 60),
@@ -196,6 +247,10 @@ class Nuke(commands.Cog):
             include_subs=options.get("include_subs", False),
             include_vips=options.get("include_vips", False)
         )
+        
+        if error:
+            await ctx.send(f"@{ctx.author.name} Regex error: {error}")
+            return
         
         if not matches:
             await ctx.send(f"@{ctx.author.name} No users found matching pattern")

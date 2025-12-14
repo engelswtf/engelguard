@@ -216,6 +216,8 @@ class Giveaways(commands.Cog):
                 return  # Silently ignore users without enough points
         
         # Calculate tickets (sub luck multiplier)
+        # FIX: Tickets stored at entry time - prevents manipulation by unsubscribing
+        # The stored ticket count is used at winner selection, not current sub status
         tickets = 1
         if is_sub and giveaway["sub_luck_multiplier"] > 1.0:
             tickets = int(giveaway["sub_luck_multiplier"])
@@ -551,6 +553,8 @@ class Giveaways(commands.Cog):
                 return
         
         # Calculate tickets (sub luck multiplier)
+        # FIX: Tickets stored at entry time - prevents manipulation by unsubscribing
+        # The stored ticket count is used at winner selection, not current sub status
         tickets = 1
         if is_sub and giveaway["sub_luck_multiplier"] > 1.0:
             tickets = int(giveaway["sub_luck_multiplier"])

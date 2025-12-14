@@ -30,6 +30,12 @@ from flask import (
 )
 from dotenv import load_dotenv, set_key
 
+try:
+    from flask_wtf.csrf import CSRFProtect
+    CSRF_AVAILABLE = True
+except ImportError:
+    CSRF_AVAILABLE = False
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -40,6 +46,11 @@ load_dotenv(ENV_FILE)
 app = Flask(__name__)
 app.secret_key = os.getenv("DASHBOARD_SECRET_KEY", secrets.token_hex(32))
 app.permanent_session_lifetime = timedelta(hours=1)
+
+# Security Fix: Add CSRF protection
+if CSRF_AVAILABLE:
+    csrf = CSRFProtect(app)
+    app.config["WTF_CSRF_TIME_LIMIT"] = 3600  # 1 hour
 
 # Database path
 DB_PATH = Path(__file__).parent.parent / "data" / "automod.db"
@@ -76,11 +87,30 @@ def hash_password(password: str) -> str:
 
 
 def login_required(f):
-    """Decorator to require login for routes."""
+    """Decorator to require login for routes.
+    
+    Security Fix: Added session token and IP hash validation to prevent
+    session hijacking and detect IP address changes.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get("logged_in"):
+            flash("Please log in first", "error")
             return redirect(url_for("login"))
+        
+        # Validate session token exists
+        if not session.get("session_token"):
+            session.clear()
+            flash("Invalid session. Please log in again.", "error")
+            return redirect(url_for("login"))
+        
+        # Validate IP hasn't changed (prevents session hijacking)
+        current_ip_hash = hashlib.sha256(request.remote_addr.encode()).hexdigest()
+        if session.get("ip_hash") and session.get("ip_hash") != current_ip_hash:
+            session.clear()
+            flash("Session invalid - IP address changed. Please log in again.", "error")
+            return redirect(url_for("login"))
+        
         return f(*args, **kwargs)
     return decorated_function
 
@@ -101,6 +131,52 @@ def mask_secret(value: str, show_chars: int = 4) -> str:
     if not value or len(value) <= show_chars:
         return "*" * 8
     return "*" * (len(value) - show_chars) + value[-show_chars:]
+
+# Dashboard-to-bot message queue
+DASHBOARD_QUEUE_FILE = "/opt/twitch-bot/data/dashboard_queue.json"
+
+
+def sanitize_chat_message(message: str, max_length: int = 500) -> str:
+    """Sanitize a message before sending to chat."""
+    if not message:
+        return ""
+    import re as re_module
+    # Remove control characters
+    message = ''.join(c for c in message if ord(c) >= 32 or c == '\n')
+    # Replace newlines with space
+    message = re_module.sub(r'\n+', ' ', message)
+    # Remove excessive whitespace
+    message = ' '.join(message.split())
+    # Truncate
+    if len(message) > max_length:
+        message = message[:max_length-3] + "..."
+    return message.strip()
+
+def queue_chat_message(channel: str, message: str) -> bool:
+    """Queue a message to be sent to Twitch chat by the bot."""
+    from pathlib import Path
+    
+    queue_file = Path(DASHBOARD_QUEUE_FILE)
+    queue_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        if queue_file.exists():
+            with open(queue_file, "r") as f:
+                file_content = f.read().strip()
+                messages = json.loads(file_content) if file_content else []
+        else:
+            messages = []
+        
+        messages.append({"channel": channel.lower(), "message": sanitize_chat_message(message)})
+        
+        with open(queue_file, "w") as f:
+            json.dump(messages, f)
+        
+        return True
+    except Exception as e:
+        print(f"Error queuing chat message: {e}")
+        return False
+
 
 
 def get_bot_status() -> dict[str, Any]:
@@ -293,8 +369,14 @@ def login():
         stored_password = get_env_value("DASHBOARD_PASSWORD", "changeme123")
         
         if password == stored_password:
+            # Security Fix: Regenerate session to prevent session fixation
+            session.clear()
             session.permanent = True
             session["logged_in"] = True
+            # Security Fix: Add session token and IP hash for session hardening
+            session["session_token"] = secrets.token_hex(32)
+            session["login_time"] = datetime.now().isoformat()
+            session["ip_hash"] = hashlib.sha256(request.remote_addr.encode()).hexdigest()
             flash("Successfully logged in!", "success")
             return redirect(url_for("dashboard"))
         else:
@@ -2598,6 +2680,1092 @@ def raid_settings():
     
     return render_template("raid_settings.html", settings=settings)
 
+
+
+# ==================== Shoutout Settings ====================
+
+@app.route("/shoutout-settings", methods=["GET", "POST"])
+@login_required
+def shoutout_settings():
+    """Shoutout settings page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip().lower()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Ensure tables exist
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shoutout_settings (
+            channel TEXT PRIMARY KEY,
+            enabled BOOLEAN DEFAULT TRUE,
+            auto_raid_shoutout BOOLEAN DEFAULT TRUE,
+            message TEXT DEFAULT 'Go check out @$(user) at twitch.tv/$(user) - They were last playing $(game)! 💜',
+            cooldown_seconds INTEGER DEFAULT 300
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS first_chatter_settings (
+            channel TEXT PRIMARY KEY,
+            enabled BOOLEAN DEFAULT TRUE,
+            message TEXT DEFAULT 'Welcome to the stream @$(user)! 👋'
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shoutout_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL,
+            target_user TEXT NOT NULL,
+            shouted_by TEXT NOT NULL,
+            shouted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            was_raid BOOLEAN DEFAULT FALSE
+        )
+    """)
+    conn.commit()
+    
+    if request.method == "POST":
+        action = request.form.get("action")
+        
+        if action == "save_shoutout_settings":
+            cursor.execute("""
+                INSERT INTO shoutout_settings (channel, enabled, auto_raid_shoutout, message, cooldown_seconds)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(channel) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    auto_raid_shoutout = excluded.auto_raid_shoutout,
+                    message = excluded.message,
+                    cooldown_seconds = excluded.cooldown_seconds
+            """, (
+                channel,
+                request.form.get("enabled") == "on",
+                request.form.get("auto_raid_shoutout") == "on",
+                request.form.get("message", "Go check out @$(user) at twitch.tv/$(user) - They were last playing $(game)! 💜").strip(),
+                int(request.form.get("cooldown_seconds", 300))
+            ))
+            conn.commit()
+            flash("Shoutout settings saved!", "success")
+        
+        elif action == "save_welcome_settings":
+            cursor.execute("""
+                INSERT INTO first_chatter_settings (channel, enabled, message)
+                VALUES (?, ?, ?)
+                ON CONFLICT(channel) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    message = excluded.message
+            """, (
+                channel,
+                request.form.get("welcome_enabled") == "on",
+                request.form.get("welcome_message", "Welcome to the stream @$(user)! 👋").strip()
+            ))
+            conn.commit()
+            flash("Welcome message settings saved!", "success")
+        
+        conn.close()
+        return redirect(url_for("shoutout_settings"))
+    
+    # GET request - load settings
+    cursor.execute("SELECT * FROM shoutout_settings WHERE channel = ?", (channel,))
+    row = cursor.fetchone()
+    settings = dict(row) if row else {
+        "enabled": True,
+        "auto_raid_shoutout": True,
+        "message": "Go check out @$(user) at twitch.tv/$(user) - They were last playing $(game)! 💜",
+        "cooldown_seconds": 300
+    }
+    
+    cursor.execute("SELECT * FROM first_chatter_settings WHERE channel = ?", (channel,))
+    row = cursor.fetchone()
+    welcome_settings = dict(row) if row else {
+        "enabled": True,
+        "message": "Welcome to the stream @$(user)! 👋"
+    }
+    
+    conn.close()
+    
+    return render_template("shoutout_settings.html", settings=settings, welcome_settings=welcome_settings)
+
+
+@app.route("/api/shoutout/settings", methods=["POST"])
+@login_required
+def api_shoutout_settings():
+    """API endpoint to update shoutout settings."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip().lower()
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO shoutout_settings (channel, enabled, auto_raid_shoutout, message, cooldown_seconds)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(channel) DO UPDATE SET
+                enabled = excluded.enabled,
+                auto_raid_shoutout = excluded.auto_raid_shoutout,
+                message = excluded.message,
+                cooldown_seconds = excluded.cooldown_seconds
+        """, (
+            channel,
+            data.get("enabled", True),
+            data.get("auto_raid_shoutout", True),
+            data.get("message", "Go check out @$(user) at twitch.tv/$(user) - They were last playing $(game)! 💜"),
+            int(data.get("cooldown_seconds", 300))
+        ))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"success": True, "message": "Shoutout settings saved"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/api/shoutout/welcome-settings", methods=["POST"])
+@login_required
+def api_shoutout_welcome_settings():
+    """API endpoint to update welcome message settings."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip().lower()
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO first_chatter_settings (channel, enabled, message)
+            VALUES (?, ?, ?)
+            ON CONFLICT(channel) DO UPDATE SET
+                enabled = excluded.enabled,
+                message = excluded.message
+        """, (
+            channel,
+            data.get("enabled", True),
+            data.get("message", "Welcome to the stream @$(user)! 👋")
+        ))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"success": True, "message": "Welcome settings saved"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/api/shoutout/history", methods=["GET"])
+@login_required
+def api_shoutout_history():
+    """API endpoint to get shoutout history."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip().lower()
+    
+    try:
+        limit = request.args.get("limit", 100, type=int)
+        raid_only = request.args.get("raid_only", "false").lower() == "true"
+        manual_only = request.args.get("manual_only", "false").lower() == "true"
+        user_filter = request.args.get("user", "").strip().lower()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Build query based on filters
+        query = "SELECT * FROM shoutout_history WHERE channel = ?"
+        params = [channel]
+        
+        if raid_only:
+            query += " AND was_raid = TRUE"
+        elif manual_only:
+            query += " AND was_raid = FALSE"
+        
+        if user_filter:
+            query += " AND (LOWER(target_user) LIKE ? OR LOWER(shouted_by) LIKE ?)"
+            params.extend([f"%{user_filter}%", f"%{user_filter}%"])
+        
+        query += " ORDER BY shouted_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        history = []
+        for row in rows:
+            history.append({
+                "id": row["id"],
+                "target_user": row["target_user"],
+                "shouted_by": row["shouted_by"],
+                "shouted_at": row["shouted_at"],
+                "was_raid": bool(row["was_raid"])
+            })
+        
+        conn.close()
+        
+        return jsonify({"success": True, "history": history})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "history": []})
+
+
+@app.route("/api/shoutout/send", methods=["POST"])
+@login_required
+def api_shoutout_send():
+    """API endpoint to trigger a manual shoutout."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip().lower()
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"})
+        
+        username = data.get("username", "").strip()
+        if not username:
+            return jsonify({"success": False, "error": "Username is required"})
+        
+        # Remove @ if present
+        username = username.lstrip("@")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Record the shoutout in history
+        cursor.execute("""
+            INSERT INTO shoutout_history (channel, target_user, shouted_by, was_raid)
+            VALUES (?, ?, ?, FALSE)
+        """, (channel, username, "Dashboard"))
+        conn.commit()
+        
+        # Try to trigger the bot to send the shoutout
+        # This uses a command queue table that the bot monitors
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bot_command_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel TEXT NOT NULL,
+                command TEXT NOT NULL,
+                args TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                processed BOOLEAN DEFAULT FALSE
+            )
+        """)
+        
+        cursor.execute("""
+            INSERT INTO bot_command_queue (channel, command, args)
+            VALUES (?, 'shoutout', ?)
+        """, (channel, username))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True, 
+            "message": f"Shoutout queued for @{username}",
+            "note": "The bot will send the shoutout message to chat."
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+# ==================== Predictions Routes ====================
+
+@app.route("/predictions")
+@login_required
+def predictions_page():
+    """Predictions management page."""
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Ensure tables exist
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL,
+            question TEXT NOT NULL,
+            outcomes TEXT NOT NULL,
+            started_by TEXT NOT NULL,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            locked_at TIMESTAMP,
+            resolved_at TIMESTAMP,
+            winning_outcome INTEGER,
+            status TEXT DEFAULT 'open',
+            prediction_type TEXT DEFAULT 'chat',
+            twitch_prediction_id TEXT,
+            auto_lock_at TIMESTAMP
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prediction_bets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prediction_id INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
+            username TEXT NOT NULL,
+            outcome_index INTEGER NOT NULL,
+            amount INTEGER NOT NULL,
+            bet_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            payout INTEGER DEFAULT 0,
+            UNIQUE(prediction_id, user_id),
+            FOREIGN KEY (prediction_id) REFERENCES predictions(id)
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prediction_settings (
+            channel TEXT PRIMARY KEY,
+            prediction_window INTEGER DEFAULT 120,
+            min_bet INTEGER DEFAULT 10,
+            max_bet INTEGER DEFAULT 10000,
+            enabled BOOLEAN DEFAULT TRUE
+        )
+    """)
+    conn.commit()
+    
+    # Get active prediction
+    cursor.execute("""
+        SELECT * FROM predictions 
+        WHERE channel = ? AND status IN ('open', 'locked')
+        ORDER BY started_at DESC LIMIT 1
+    """, (channel.lower(),))
+    active_row = cursor.fetchone()
+    active_prediction = dict(active_row) if active_row else None
+    
+    outcomes = []
+    outcome_stats = {}
+    odds = {}
+    total_pool = 0
+    total_bets = 0
+    
+    if active_prediction:
+        outcomes = json.loads(active_prediction["outcomes"])
+        
+        # Get bet stats per outcome
+        cursor.execute("""
+            SELECT outcome_index, COUNT(*) as bet_count, SUM(amount) as total_amount
+            FROM prediction_bets
+            WHERE prediction_id = ?
+            GROUP BY outcome_index
+        """, (active_prediction["id"],))
+        
+        outcome_stats = {i: {"bets": 0, "amount": 0} for i in range(len(outcomes))}
+        
+        for row in cursor.fetchall():
+            idx = row["outcome_index"]
+            outcome_stats[idx] = {
+                "bets": row["bet_count"],
+                "amount": row["total_amount"] or 0
+            }
+            total_pool += row["total_amount"] or 0
+            total_bets += row["bet_count"]
+        
+        # Calculate odds
+        for i in range(len(outcomes)):
+            if outcome_stats[i]["amount"] > 0:
+                odds[i] = total_pool / outcome_stats[i]["amount"]
+            else:
+                odds[i] = 0
+    
+    # Get prediction history
+    cursor.execute("""
+        SELECT p.*,
+               (SELECT SUM(amount) FROM prediction_bets WHERE prediction_id = p.id) as total_pool,
+               (SELECT COUNT(*) FROM prediction_bets WHERE prediction_id = p.id) as total_bets
+        FROM predictions p
+        WHERE p.channel = ? AND p.status IN ('resolved', 'cancelled')
+        ORDER BY p.started_at DESC LIMIT 50
+    """, (channel.lower(),))
+    
+    history = []
+    for row in cursor.fetchall():
+        pred = dict(row)
+        pred["outcomes"] = json.loads(pred["outcomes"])
+        history.append(pred)
+    
+    # Get all-time stats
+    cursor.execute("""
+        SELECT SUM(amount) as total_wagered, COUNT(DISTINCT user_id) as unique_bettors
+        FROM prediction_bets pb
+        JOIN predictions p ON pb.prediction_id = p.id
+        WHERE p.channel = ?
+    """, (channel.lower(),))
+    stats_row = cursor.fetchone()
+    total_points_wagered = stats_row["total_wagered"] or 0 if stats_row else 0
+    total_unique_bettors = stats_row["unique_bettors"] or 0 if stats_row else 0
+    
+    # Get settings
+    cursor.execute("SELECT * FROM prediction_settings WHERE channel = ?", (channel.lower(),))
+    settings_row = cursor.fetchone()
+    settings = dict(settings_row) if settings_row else {
+        "enabled": True,
+        "prediction_window": 120,
+        "min_bet": 10,
+        "max_bet": 10000
+    }
+    
+    conn.close()
+    
+    return render_template("predictions.html",
+                          active_prediction=active_prediction,
+                          outcomes=outcomes,
+                          outcome_stats=outcome_stats,
+                          odds=odds,
+                          total_pool=total_pool,
+                          total_bets=total_bets,
+                          history=history,
+                          total_points_wagered=total_points_wagered,
+                          total_unique_bettors=total_unique_bettors,
+                          settings=settings)
+
+
+@app.route("/api/predictions/create", methods=["POST"])
+@login_required
+def create_prediction():
+    """Create a new prediction."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        data = request.get_json()
+        
+        question = data.get("question", "").strip()
+        outcomes = data.get("outcomes", [])
+        prediction_window = int(data.get("prediction_window", 120))
+        
+        if not question:
+            return jsonify({"success": False, "error": "Question is required"}), 400
+        
+        if len(outcomes) < 2:
+            return jsonify({"success": False, "error": "At least 2 outcomes required"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check for existing active prediction
+        cursor.execute("""
+            SELECT id FROM predictions 
+            WHERE channel = ? AND status IN ('open', 'locked')
+        """, (channel.lower(),))
+        
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({"success": False, "error": "A prediction is already active"}), 400
+        
+        # Calculate auto-lock time
+        auto_lock_at = None
+        if prediction_window > 0:
+            auto_lock_at = (datetime.now() + timedelta(seconds=prediction_window)).isoformat()
+        
+        # Create prediction
+        cursor.execute("""
+            INSERT INTO predictions 
+            (channel, question, outcomes, started_by, auto_lock_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            channel.lower(),
+            question,
+            json.dumps(outcomes),
+            "dashboard",
+            auto_lock_at
+        ))
+        
+        prediction_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        # Announce in chat
+        outcome_list = " | ".join(f"[{i+1}] {o}" for i, o in enumerate(outcomes))
+        time_msg = ""
+        if prediction_window > 0:
+            mins = prediction_window // 60
+            secs = prediction_window % 60
+            time_msg = f" Betting closes in {mins}m {secs}s!" if mins else f" Betting closes in {secs}s!"
+        chat_msg = f"🔮 PREDICTION: {question} | {outcome_list} | Use !bet <#> <amount> to bet!{time_msg}"
+        queue_chat_message(channel, chat_msg)
+        
+        return jsonify({
+            "success": True, 
+            "prediction_id": prediction_id,
+            "message": "Prediction created successfully"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/predictions/<int:prediction_id>/lock", methods=["POST"])
+@login_required
+def lock_prediction(prediction_id):
+    """Lock betting on a prediction."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE predictions 
+            SET status = 'locked', locked_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'open'
+        """, (prediction_id,))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({"success": False, "error": "Prediction not found or already locked"}), 404
+        
+        # Get channel for chat message
+        cursor.execute("SELECT channel FROM predictions WHERE id = ?", (prediction_id,))
+        row = cursor.fetchone()
+        channel = row["channel"] if row else ""
+        
+        conn.commit()
+        conn.close()
+        
+        # Announce in chat
+        if channel:
+            queue_chat_message(channel, "🔒 Prediction LOCKED! No more bets accepted.")
+        
+        return jsonify({"success": True, "message": "Prediction locked"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/predictions/<int:prediction_id>/resolve", methods=["POST"])
+@login_required
+def resolve_prediction(prediction_id):
+    """Resolve a prediction with a winning outcome."""
+    try:
+        data = request.get_json()
+        winning_outcome = data.get("winning_outcome")
+        
+        if winning_outcome is None:
+            return jsonify({"success": False, "error": "Winning outcome required"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get prediction
+        cursor.execute("SELECT * FROM predictions WHERE id = ?", (prediction_id,))
+        prediction = cursor.fetchone()
+        
+        if not prediction:
+            conn.close()
+            return jsonify({"success": False, "error": "Prediction not found"}), 404
+        
+        prediction = dict(prediction)
+        outcomes = json.loads(prediction["outcomes"])
+        
+        if winning_outcome < 0 or winning_outcome >= len(outcomes):
+            conn.close()
+            return jsonify({"success": False, "error": "Invalid outcome index"}), 400
+        
+        # Lock if still open
+        if prediction["status"] == "open":
+            cursor.execute("""
+                UPDATE predictions 
+                SET status = 'locked', locked_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (prediction_id,))
+        
+        # Get all bets
+        cursor.execute("""
+            SELECT * FROM prediction_bets WHERE prediction_id = ?
+        """, (prediction_id,))
+        all_bets = [dict(row) for row in cursor.fetchall()]
+        
+        # Calculate payouts
+        total_pool = sum(bet["amount"] for bet in all_bets)
+        winner_pool = sum(bet["amount"] for bet in all_bets if bet["outcome_index"] == winning_outcome)
+        
+        winners = []
+        if winner_pool > 0:
+            payout_ratio = total_pool / winner_pool
+            
+            for bet in all_bets:
+                if bet["outcome_index"] == winning_outcome:
+                    payout = int(bet["amount"] * payout_ratio)
+                    
+                    # Update bet record
+                    cursor.execute("""
+                        UPDATE prediction_bets SET payout = ? WHERE id = ?
+                    """, (payout, bet["id"]))
+                    
+                    # Award points to winner
+                    cursor.execute("""
+                        UPDATE user_loyalty 
+                        SET points = points + ?
+                        WHERE user_id = ? AND channel = ?
+                    """, (payout, bet["user_id"], prediction["channel"]))
+                    
+                    winners.append({
+                        "username": bet["username"],
+                        "bet": bet["amount"],
+                        "payout": payout
+                    })
+        
+        # Mark prediction as resolved
+        cursor.execute("""
+            UPDATE predictions 
+            SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP, winning_outcome = ?
+            WHERE id = ?
+        """, (winning_outcome, prediction_id))
+        
+        conn.commit()
+        conn.close()
+        
+        # Announce in chat
+        winning_text = outcomes[winning_outcome]
+        if winners:
+            total_payout = sum(w["payout"] for w in winners)
+            top_winners = sorted(winners, key=lambda x: x["payout"], reverse=True)[:3]
+            winner_names = ", ".join(f"@{w['username']} (+{w['payout']:,})" for w in top_winners)
+            chat_msg = f"🎉 PREDICTION RESOLVED! Winner: [{winning_outcome+1}] {winning_text} | Total payout: {total_payout:,} points | Top winners: {winner_names}"
+        else:
+            chat_msg = f"🎉 PREDICTION RESOLVED! Winner: [{winning_outcome+1}] {winning_text} | No winning bets."
+        queue_chat_message(prediction["channel"], chat_msg)
+        
+        return jsonify({
+            "success": True,
+            "message": f"Prediction resolved. {len(winners)} winner(s).",
+            "winners": winners,
+            "total_pool": total_pool
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/predictions/<int:prediction_id>/cancel", methods=["POST"])
+@login_required
+def cancel_prediction(prediction_id):
+    """Cancel a prediction and refund all bets."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get prediction
+        cursor.execute("SELECT channel FROM predictions WHERE id = ?", (prediction_id,))
+        prediction = cursor.fetchone()
+        
+        if not prediction:
+            conn.close()
+            return jsonify({"success": False, "error": "Prediction not found"}), 404
+        
+        channel = prediction["channel"]
+        
+        # Get all bets for refund
+        cursor.execute("""
+            SELECT * FROM prediction_bets WHERE prediction_id = ?
+        """, (prediction_id,))
+        bets = cursor.fetchall()
+        
+        # Refund each bet
+        refund_count = 0
+        for bet in bets:
+            cursor.execute("""
+                UPDATE user_loyalty 
+                SET points = points + ?
+                WHERE user_id = ? AND channel = ?
+            """, (bet["amount"], bet["user_id"], channel))
+            refund_count += 1
+        
+        # Mark prediction as cancelled
+        cursor.execute("""
+            UPDATE predictions 
+            SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (prediction_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        # Announce in chat
+        queue_chat_message(channel, f"❌ Prediction CANCELLED! {refund_count} bet(s) have been refunded.")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Prediction cancelled. {refund_count} bet(s) refunded.",
+            "refunds": refund_count
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/predictions/active")
+@login_required
+def get_active_prediction():
+    """Get the active prediction with stats (for real-time updates)."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM predictions 
+            WHERE channel = ? AND status IN ('open', 'locked')
+            ORDER BY started_at DESC LIMIT 1
+        """, (channel.lower(),))
+        
+        row = cursor.fetchone()
+        
+        if not row:
+            conn.close()
+            return jsonify({"success": True, "prediction": None})
+        
+        prediction = dict(row)
+        outcomes = json.loads(prediction["outcomes"])
+        
+        # Get bet stats
+        cursor.execute("""
+            SELECT outcome_index, COUNT(*) as bet_count, SUM(amount) as total_amount
+            FROM prediction_bets
+            WHERE prediction_id = ?
+            GROUP BY outcome_index
+        """, (prediction["id"],))
+        
+        outcome_stats = {i: {"bets": 0, "amount": 0} for i in range(len(outcomes))}
+        total_pool = 0
+        total_bets = 0
+        
+        for stat_row in cursor.fetchall():
+            idx = stat_row["outcome_index"]
+            outcome_stats[idx] = {
+                "bets": stat_row["bet_count"],
+                "amount": stat_row["total_amount"] or 0
+            }
+            total_pool += stat_row["total_amount"] or 0
+            total_bets += stat_row["bet_count"]
+        
+        # Calculate odds
+        odds = {}
+        for i in range(len(outcomes)):
+            if outcome_stats[i]["amount"] > 0:
+                odds[i] = total_pool / outcome_stats[i]["amount"]
+            else:
+                odds[i] = 0
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "prediction": prediction,
+            "stats": {
+                "outcome_stats": outcome_stats,
+                "odds": odds,
+                "total_pool": total_pool,
+                "total_bets": total_bets
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/predictions/history")
+@login_required
+def get_prediction_history():
+    """Get prediction history."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        limit = request.args.get("limit", 50, type=int)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT p.*,
+                   (SELECT SUM(amount) FROM prediction_bets WHERE prediction_id = p.id) as total_pool,
+                   (SELECT COUNT(*) FROM prediction_bets WHERE prediction_id = p.id) as total_bets
+            FROM predictions p
+            WHERE p.channel = ? AND p.status IN ('resolved', 'cancelled')
+            ORDER BY p.started_at DESC LIMIT ?
+        """, (channel.lower(), limit))
+        
+        history = []
+        for row in cursor.fetchall():
+            pred = dict(row)
+            pred["outcomes"] = json.loads(pred["outcomes"])
+            history.append(pred)
+        
+        conn.close()
+        
+        return jsonify({"success": True, "history": history})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/predictions/settings", methods=["POST"])
+@login_required
+def update_prediction_settings():
+    """Update prediction settings."""
+    try:
+        channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip()
+        data = request.get_json()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Ensure table exists
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS prediction_settings (
+                channel TEXT PRIMARY KEY,
+                prediction_window INTEGER DEFAULT 120,
+                min_bet INTEGER DEFAULT 10,
+                max_bet INTEGER DEFAULT 10000,
+                enabled BOOLEAN DEFAULT TRUE
+            )
+        """)
+        
+        # Update settings
+        cursor.execute("""
+            INSERT INTO prediction_settings 
+            (channel, enabled, prediction_window, min_bet, max_bet)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(channel) DO UPDATE SET
+                enabled = excluded.enabled,
+                prediction_window = excluded.prediction_window,
+                min_bet = excluded.min_bet,
+                max_bet = excluded.max_bet
+        """, (
+            channel.lower(),
+            data.get("enabled", True),
+            int(data.get("prediction_window", 120)),
+            int(data.get("min_bet", 10)),
+            int(data.get("max_bet", 10000))
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"success": True, "message": "Settings saved"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+
+# ==================== POLLS ROUTES ====================
+
+@app.route("/polls")
+@login_required
+def polls_page():
+    """Polls management page."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip().lower()
+    
+    # Ensure tables exist
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS polls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL,
+            question TEXT NOT NULL,
+            options TEXT NOT NULL,
+            started_by TEXT NOT NULL,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ended_at TIMESTAMP,
+            duration_seconds INTEGER DEFAULT 60,
+            status TEXT DEFAULT 'active'
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS poll_votes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            poll_id INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
+            username TEXT NOT NULL,
+            option_index INTEGER NOT NULL,
+            voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(poll_id, user_id),
+            FOREIGN KEY (poll_id) REFERENCES polls(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS poll_settings (
+            channel TEXT PRIMARY KEY,
+            enabled BOOLEAN DEFAULT TRUE,
+            default_duration INTEGER DEFAULT 60
+        )
+    """)
+    conn.commit()
+    
+    # Get active poll
+    cursor.execute("""
+        SELECT * FROM polls 
+        WHERE channel = ? AND status = 'active'
+        ORDER BY started_at DESC LIMIT 1
+    """, (channel,))
+    active_poll = cursor.fetchone()
+    
+    # Get poll history
+    cursor.execute("""
+        SELECT * FROM polls 
+        WHERE channel = ?
+        ORDER BY started_at DESC LIMIT 20
+    """, (channel,))
+    poll_history = cursor.fetchall()
+    
+    # Get vote counts for active poll
+    votes_by_option = {}
+    if active_poll:
+        cursor.execute("""
+            SELECT option_index, COUNT(*) as count
+            FROM poll_votes WHERE poll_id = ?
+            GROUP BY option_index
+        """, (active_poll["id"],))
+        for row in cursor.fetchall():
+            votes_by_option[row["option_index"]] = row["count"]
+    
+    # Get settings
+    cursor.execute("SELECT * FROM poll_settings WHERE channel = ?", (channel,))
+    settings = cursor.fetchone()
+    
+    conn.close()
+    
+    return render_template("polls.html",
+        active_poll=active_poll,
+        poll_history=poll_history,
+        votes_by_option=votes_by_option,
+        settings=settings,
+        channel=channel
+    )
+
+@app.route("/api/polls/active")
+@login_required
+def api_polls_active():
+    """Get active poll data."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip().lower()
+    
+    cursor.execute("""
+        SELECT * FROM polls 
+        WHERE channel = ? AND status = 'active'
+        ORDER BY started_at DESC LIMIT 1
+    """, (channel,))
+    poll = cursor.fetchone()
+    
+    if not poll:
+        conn.close()
+        return jsonify({"active": False})
+    
+    cursor.execute("""
+        SELECT option_index, COUNT(*) as count
+        FROM poll_votes WHERE poll_id = ?
+        GROUP BY option_index
+    """, (poll["id"],))
+    votes = {row["option_index"]: row["count"] for row in cursor.fetchall()}
+    
+    conn.close()
+    
+    options = json.loads(poll["options"]) if poll["options"] else []
+    
+    return jsonify({
+        "active": True,
+        "id": poll["id"],
+        "question": poll["question"],
+        "options": options,
+        "votes": votes,
+        "total_votes": sum(votes.values()),
+        "started_at": poll["started_at"],
+        "duration": poll["duration_seconds"],
+        "status": poll["status"]
+    })
+
+@app.route("/api/polls/create", methods=["POST"])
+@login_required
+def api_polls_create():
+    """Create a new poll."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip().lower()
+    
+    data = request.get_json()
+    question = data.get("question", "").strip()
+    options = data.get("options", [])
+    duration = int(data.get("duration", 60))
+    
+    if not question or len(options) < 2:
+        return jsonify({"success": False, "error": "Invalid poll data"}), 400
+    
+    cursor.execute("SELECT id FROM polls WHERE channel = ? AND status = 'active'", (channel,))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({"success": False, "error": "A poll is already active"}), 400
+    
+    cursor.execute("""
+        INSERT INTO polls (channel, question, options, started_by, duration_seconds, status)
+        VALUES (?, ?, ?, ?, ?, 'active')
+    """, (channel, question, json.dumps(options), "dashboard", duration))
+    
+    conn.commit()
+    poll_id = cursor.lastrowid
+    conn.close()
+    
+    # Announce in chat
+    option_list = " | ".join(f"[{i+1}] {o}" for i, o in enumerate(options))
+    queue_chat_message(channel, f"📊 POLL: {question} | {option_list} | Vote with !vote <#>")
+    
+    return jsonify({"success": True, "poll_id": poll_id})
+
+@app.route("/api/polls/<int:poll_id>/end", methods=["POST"])
+@login_required
+def api_polls_end(poll_id):
+    """End a poll."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT channel, question FROM polls WHERE id = ?", (poll_id,))
+    poll = cursor.fetchone()
+    
+    cursor.execute("""
+        UPDATE polls SET status = 'ended', ended_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'active'
+    """, (poll_id,))
+    
+    conn.commit()
+    conn.close()
+    
+    if poll:
+        queue_chat_message(poll["channel"], f"📊 Poll ended: {poll['question']}")
+    
+    return jsonify({"success": True})
+
+@app.route("/api/polls/<int:poll_id>/cancel", methods=["POST"])
+@login_required
+def api_polls_cancel(poll_id):
+    """Cancel a poll."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT channel FROM polls WHERE id = ?", (poll_id,))
+    poll = cursor.fetchone()
+    
+    cursor.execute("""
+        UPDATE polls SET status = 'cancelled', ended_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'active'
+    """, (poll_id,))
+    
+    conn.commit()
+    conn.close()
+    
+    if poll:
+        queue_chat_message(poll["channel"], "📊 Poll cancelled.")
+    
+    return jsonify({"success": True})
+
+@app.route("/api/polls/settings", methods=["POST"])
+@login_required
+def api_polls_settings():
+    """Update poll settings."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    channel = get_env_value("TWITCH_CHANNELS", "").split(",")[0].strip().lower()
+    
+    data = request.get_json()
+    enabled = data.get("enabled", True)
+    default_duration = int(data.get("default_duration", 60))
+    
+    cursor.execute("""
+        INSERT INTO poll_settings (channel, enabled, default_duration)
+        VALUES (?, ?, ?)
+        ON CONFLICT(channel) DO UPDATE SET enabled = ?, default_duration = ?
+    """, (channel, enabled, default_duration, enabled, default_duration))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"success": True})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)

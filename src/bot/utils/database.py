@@ -1124,17 +1124,18 @@ class DatabaseManager:
         watch_time_delta: int = 0,
         message_count_delta: int = 0
     ) -> dict[str, Any]:
-        """Update user's loyalty data."""
+        """Update user's loyalty data (points floor at 0)."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
+            # Use MAX to prevent negative balance when deducting points
             cursor.execute(
                 """
                 INSERT INTO user_loyalty (user_id, username, channel, points, watch_time_minutes, message_count, last_seen)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, MAX(0, ?), ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(user_id, channel) DO UPDATE SET
                     username = excluded.username,
-                    points = user_loyalty.points + ?,
+                    points = MAX(0, user_loyalty.points + ?),
                     watch_time_minutes = user_loyalty.watch_time_minutes + ?,
                     message_count = user_loyalty.message_count + ?,
                     last_seen = CURRENT_TIMESTAMP
@@ -1146,12 +1147,21 @@ class DatabaseManager:
             return self.get_user_loyalty(user_id, channel)
     
     def set_user_points(self, user_id: str, channel: str, points: float) -> None:
-        """Set user's points to a specific value."""
+        """Set user's loyalty points (enforces non-negative)."""
+        # Prevent negative points
+        if points < 0:
+            logger.warning("Attempted to set negative points for user %s: %f, clamping to 0", user_id, points)
+            points = 0
+        
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE user_loyalty SET points = ? WHERE user_id = ? AND channel = ?",
-                (points, user_id, channel.lower())
+                """
+                INSERT INTO user_loyalty (user_id, channel, points)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, channel) DO UPDATE SET points = ?
+                """,
+                (user_id, channel.lower(), points, points)
             )
     
     def get_loyalty_leaderboard(self, channel: str, limit: int = 10) -> list[dict[str, Any]]:
@@ -1491,7 +1501,7 @@ class DatabaseManager:
                 ORDER BY id ASC
                 LIMIT 10
                 """,
-                (channel.lower(), f"%{search_term}%", f"%{search_term}%")
+                (channel.lower(), f"%{search_term.replace(chr(37), chr(92)+chr(37)).replace(chr(95), chr(92)+chr(95))}%", f"%{search_term.replace(chr(37), chr(92)+chr(37)).replace(chr(95), chr(92)+chr(95))}%")
             )
             return [dict(row) for row in cursor.fetchall()]
     

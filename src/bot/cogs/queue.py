@@ -101,6 +101,24 @@ class Queue(commands.Cog):
                 ON viewer_queue(channel, queue_name, picked)
             """)
             
+            # Queue history table for rejoin protection
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS viewer_queue_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel TEXT NOT NULL,
+                    queue_name TEXT DEFAULT 'default',
+                    user_id TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    joined_at TIMESTAMP,
+                    left_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    picked BOOLEAN DEFAULT FALSE
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_viewer_queue_history_rejoin
+                ON viewer_queue_history(channel, queue_name, user_id, left_at)
+            """)
+            
             logger.info("Queue tables initialized")
     
     # ==================== Database Helper Methods ====================
@@ -240,7 +258,7 @@ class Queue(commands.Cog):
         is_subscriber: bool
     ) -> tuple[bool, str, int]:
         """
-        Add user to queue.
+        Add user to queue with rejoin protection.
         
         Returns:
             tuple: (success, message, position)
@@ -253,6 +271,19 @@ class Queue(commands.Cog):
         # Check if already in queue
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
+            
+            # Check if user recently left (within 5 minutes) - rejoin protection
+            cursor.execute("""
+                SELECT left_at FROM viewer_queue_history
+                WHERE channel = ? AND queue_name = ? AND user_id = ?
+                AND left_at > datetime('now', '-5 minutes')
+                AND picked = 0
+                ORDER BY left_at DESC LIMIT 1
+            """, (channel.lower(), queue_name.lower(), user_id))
+            
+            recent_leave = cursor.fetchone()
+            if recent_leave:
+                return False, "You left recently. Please wait 5 minutes before rejoining.", 0
             
             cursor.execute("""
                 SELECT id, picked FROM viewer_queue
@@ -291,12 +322,12 @@ class Queue(commands.Cog):
         queue_name: str,
         user_id: str
     ) -> tuple[bool, str]:
-        """Remove user from queue."""
+        """Remove user from queue with leave tracking for rejoin protection."""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT id, picked FROM viewer_queue
+                SELECT id, picked, username, joined_at FROM viewer_queue
                 WHERE channel = ? AND queue_name = ? AND user_id = ?
             """, (channel.lower(), queue_name.lower(), user_id))
             
@@ -306,6 +337,14 @@ class Queue(commands.Cog):
             
             if existing["picked"]:
                 return False, "You were already picked and can't leave."
+            
+            # Record leave in history for rejoin protection
+            cursor.execute("""
+                INSERT INTO viewer_queue_history 
+                (channel, queue_name, user_id, username, joined_at, left_at, picked)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), 0)
+            """, (channel.lower(), queue_name.lower(), user_id, 
+                  existing["username"], existing["joined_at"]))
             
             cursor.execute("""
                 DELETE FROM viewer_queue

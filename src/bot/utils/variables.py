@@ -40,7 +40,7 @@ class VariableParser:
     """
     
     # Regex to match variables like $(variable) or $(variable.arg) or $(variable arg1 arg2)
-    VARIABLE_PATTERN = re.compile(r'\$\\(([^)]+)\\)')
+    VARIABLE_PATTERN = re.compile(r'\$\(([^)]+)\)')
     
     def __init__(self, bot: Any = None) -> None:
         """
@@ -52,6 +52,11 @@ class VariableParser:
         self.bot = bot
         self._cache: dict[str, tuple[Any, datetime]] = {}
         self._cache_ttl = 60  # seconds
+        
+        # Urlfetch rate limiting
+        self._urlfetch_cooldowns: dict[str, datetime] = {}
+        self._urlfetch_count = 0
+        self._max_urlfetch_per_parse = 3
     
     def _get_cached(self, key: str) -> Optional[Any]:
         """Get a cached value if not expired."""
@@ -101,6 +106,17 @@ class VariableParser:
         """
         if not template:
             return template
+        
+        # Reset urlfetch counter for this parse
+        self._urlfetch_count = 0
+        
+        # Rate limit urlfetch calls - warn if too many
+        urlfetch_count = template.lower().count("$(urlfetch")
+        if urlfetch_count > self._max_urlfetch_per_parse:
+            logger.warning(
+                "Template has %d urlfetch calls, limiting to %d",
+                urlfetch_count, self._max_urlfetch_per_parse
+            )
         
         args = args or []
         extra_context = extra_context or {}
@@ -247,8 +263,11 @@ class VariableParser:
         if var_name == "points":
             return context.get("points", "0")
         
-        # URL fetch
+        # URL fetch with rate limiting
         if var_name == "urlfetch":
+            if self._urlfetch_count >= self._max_urlfetch_per_parse:
+                return "[Max urlfetch limit reached]"
+            self._urlfetch_count += 1
             return await self._urlfetch(var_args)
         
         # Touser (target or sender)
@@ -377,8 +396,57 @@ class VariableParser:
         """Get account age (placeholder - needs Twitch API)."""
         return "Unknown"
     
+    def _is_internal_ip(self, hostname: str) -> bool:
+        """Check if hostname resolves to an internal/private IP address."""
+        import ipaddress
+        import socket
+        
+        # Block common internal hostnames
+        blocked_hostnames = {
+            'localhost', 'localhost.localdomain', 
+            'metadata', 'metadata.google.internal',
+            '169.254.169.254',  # AWS/GCP metadata
+        }
+        
+        hostname_lower = hostname.lower()
+        if hostname_lower in blocked_hostnames:
+            return True
+        
+        # Check if it's an IP address directly
+        try:
+            ip = ipaddress.ip_address(hostname)
+            # Block private, loopback, link-local, and reserved ranges
+            return (
+                ip.is_private or 
+                ip.is_loopback or 
+                ip.is_link_local or 
+                ip.is_reserved or
+                ip.is_multicast
+            )
+        except ValueError:
+            pass  # Not an IP address, need to resolve
+        
+        # Resolve hostname and check IP
+        try:
+            # Get all IPs for the hostname
+            addrs = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
+            for addr in addrs:
+                ip_str = addr[4][0]
+                try:
+                    ip = ipaddress.ip_address(ip_str)
+                    if (ip.is_private or ip.is_loopback or 
+                        ip.is_link_local or ip.is_reserved or ip.is_multicast):
+                        return True
+                except ValueError:
+                    continue
+        except socket.gaierror:
+            # Can't resolve - allow (will fail on actual request)
+            pass
+        
+        return False
+
     async def _urlfetch(self, url: str) -> str:
-        """Fetch text from a URL."""
+        """Fetch text from a URL with SSRF protection and rate limiting."""
         if not url:
             return "No URL provided"
         
@@ -388,9 +456,49 @@ class VariableParser:
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
         
+        # Rate limiting - max 1 fetch per URL per 10 seconds
+        cache_key = f"urlfetch:{url}"
+        if cache_key in self._urlfetch_cooldowns:
+            elapsed = (datetime.now(timezone.utc) - self._urlfetch_cooldowns[cache_key]).total_seconds()
+            if elapsed < 10:
+                return f"[Rate limited - wait {10 - int(elapsed)}s]"
+        
+        self._urlfetch_cooldowns[cache_key] = datetime.now(timezone.utc)
+        
+        # Parse URL to extract hostname
         try:
+            parsed = urllib.parse.urlparse(url)
+            hostname = parsed.hostname
+            
+            if not hostname:
+                return "Error: Invalid URL"
+            
+            # SSRF Protection: Block internal IPs and hostnames
+            if self._is_internal_ip(hostname):
+                logger.warning("SSRF attempt blocked for URL: %s", url)
+                return "Error: Access to internal resources is not allowed"
+            
+            # Block dangerous ports
+            port = parsed.port
+            if port and port not in (80, 443, 8080, 8443):
+                return "Error: Non-standard ports are not allowed"
+                
+        except Exception as e:
+            logger.warning("URL parse error for %s: %s", url, e)
+            return "Error: Invalid URL"
+        
+        try:
+            # Create connector that doesn't follow redirects to prevent redirect-based SSRF
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                async with session.get(
+                    url, 
+                    timeout=aiohttp.ClientTimeout(total=5),
+                    allow_redirects=False  # Disable redirects to prevent SSRF via redirect
+                ) as response:
+                    # Handle redirects manually with SSRF check
+                    if response.status in (301, 302, 303, 307, 308):
+                        return "Error: Redirects are not allowed"
+                    
                     if response.status == 200:
                         text = await response.text()
                         # Limit response length

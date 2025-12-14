@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+
+{% block title %}Predictions - EngelGuard{% endblock %}
+{% block page_title %}Predictions{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-info">
+        <p class="header-subtitle">Create predictions with loyalty point betting</p>
+    </div>
+</div>
+
+<!-- Active Prediction Section -->
+{% if active_prediction %}
+<div class="card" id="activePredictionCard">
+    <div class="card-header">
+        <h2>🔮 Active Prediction</h2>
+        <span class="badge badge-{{ 'success' if active_prediction.status == 'open' else 'warning' }}" id="predStatus">
+            {{ active_prediction.status|upper }}
+        </span>
+    </div>
+    <div class="card-body">
+        <h3 style="margin-bottom: 1rem;">{{ active_prediction.question }}</h3>
+        
+        <div class="stats-grid" style="margin-bottom: 1.5rem;">
+            {% for i in range(outcomes|length) %}
+            <div class="stat-card">
+                <div class="stat-value" id="points-{{ i }}">{{ outcome_stats.get(i, {}).get('amount', 0)|int }} pts</div>
+                <div class="stat-label">[{{ i + 1 }}] {{ outcomes[i] }}</div>
+                <div class="stat-sublabel" id="bets-{{ i }}">{{ outcome_stats.get(i, {}).get('bets', 0) }} bets</div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div style="text-align: center; margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
+            <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent);" id="totalPool">{{ total_pool|int }} points</div>
+            <div style="color: var(--text-secondary);">Total Pool (<span id="totalBets">{{ total_bets }}</span> bets)</div>
+        </div>
+        
+        <div class="btn-group">
+            {% if active_prediction.status == 'open' %}
+            <button class="btn btn-warning" onclick="lockPrediction({{ active_prediction.id }})">🔒 Lock Betting</button>
+            {% endif %}
+            <button class="btn btn-success" onclick="openResolveModal()">🏆 Resolve</button>
+            <button class="btn btn-danger" onclick="cancelPrediction({{ active_prediction.id }})">❌ Cancel & Refund</button>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- No Active Prediction -->
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <div class="empty-state-icon">🔮</div>
+            <h3>No Active Prediction</h3>
+            <p>Create a prediction below to engage viewers</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Create Prediction -->
+<div class="card">
+    <div class="card-header">
+        <h2>Create New Prediction</h2>
+    </div>
+    <div class="card-body">
+        <form id="createPredictionForm">
+            <div class="form-group">
+                <label>Question</label>
+                <input type="text" id="predQuestionInput" class="form-control" required 
+                       placeholder="Will I win this match?" maxlength="200">
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Outcome 1</label>
+                    <input type="text" id="outcome1" class="form-control" required placeholder="Yes" maxlength="50">
+                </div>
+                <div class="form-group">
+                    <label>Outcome 2</label>
+                    <input type="text" id="outcome2" class="form-control" required placeholder="No" maxlength="50">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Betting Window</label>
+                <select id="predWindow" class="form-control">
+                    <option value="60">1 minute</option>
+                    <option value="120" selected>2 minutes</option>
+                    <option value="300">5 minutes</option>
+                    <option value="0">No auto-lock</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" id="createBtn" {% if active_prediction %}disabled{% endif %}>
+                🔮 Start Prediction
+            </button>
+            {% if active_prediction %}
+            <span style="margin-left: 1rem; color: var(--text-secondary);">End the current prediction first</span>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<!-- Prediction History -->
+<div class="card">
+    <div class="card-header">
+        <h2>Prediction History</h2>
+    </div>
+    <div class="card-body">
+        {% if history %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Question</th>
+                    <th>Winner</th>
+                    <th>Pool</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pred in history %}
+                <tr>
+                    <td>{{ pred.question[:40] }}{% if pred.question|length > 40 %}...{% endif %}</td>
+                    <td>
+                        {% if pred.status == 'resolved' and pred.winning_outcome is not none %}
+                        <span class="badge badge-success">🏆 #{{ pred.winning_outcome + 1 }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>{{ pred.total_pool|default(0)|int }}</td>
+                    <td><span class="badge badge-{% if pred.status == 'resolved' %}success{% elif pred.status == 'cancelled' %}danger{% else %}secondary{% endif %}">{{ pred.status }}</span></td>
+                    <td>{{ pred.started_at[:10] if pred.started_at else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No prediction history yet</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Settings -->
+<div class="card">
+    <div class="card-header">
+        <h2>⚙️ Settings</h2>
+        <label class="toggle">
+            <input type="checkbox" id="predictionsEnabled" {% if settings and settings.enabled %}checked{% endif %}>
+            <span class="toggle-slider"></span>
+        </label>
+    </div>
+    <div class="card-body">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Min Bet</label>
+                <input type="number" id="minBet" class="form-control" value="{{ settings.min_bet|default(10) }}" min="1">
+            </div>
+            <div class="form-group">
+                <label>Max Bet</label>
+                <input type="number" id="maxBet" class="form-control" value="{{ settings.max_bet|default(10000) }}" min="1">
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="savePredSettings()">Save Settings</button>
+    </div>
+</div>
+
+<!-- Resolve Modal -->
+<div class="modal" id="resolveModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>🏆 Select Winner</h3>
+            <button class="modal-close" onclick="closeResolveModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p>Choose the winning outcome:</p>
+            <div id="outcomeButtons" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                {% if active_prediction and outcomes %}
+                {% for i in range(outcomes|length) %}
+                <button class="btn btn-secondary outcome-btn" data-outcome="{{ i }}">
+                    [{{ i + 1 }}] {{ outcomes[i] }}
+                </button>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeResolveModal()">Cancel</button>
+            <button class="btn btn-success" id="confirmResolveBtn" disabled>Confirm Winner</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" style="display:none; position:fixed; bottom:20px; right:20px; padding:1rem 1.5rem; border-radius:8px; color:white; z-index:9999;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const activePredictionId = {{ active_prediction.id if active_prediction else 'null' }};
+let selectedOutcome = null;
+
+// Simple toast notification
+function toast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#6366f1';
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+}
+
+// Form submit
+document.getElementById('createPredictionForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const btn = document.getElementById('createBtn');
+    const question = document.getElementById('predQuestionInput').value.trim();
+    const outcome1 = document.getElementById('outcome1').value.trim();
+    const outcome2 = document.getElementById('outcome2').value.trim();
+    const predWindow = document.getElementById('predWindow').value;
+    
+    if (!question || !outcome1 || !outcome2) {
+        toast('Please fill all fields', 'error');
+        return;
+    }
+    
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+    
+    fetch('/api/predictions/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            question: question,
+            outcomes: [outcome1, outcome2],
+            prediction_window: parseInt(predWindow)
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        console.log('Response:', data);
+        if (data.success) {
+            toast('Prediction created!', 'success');
+            location.reload();
+        } else {
+            toast(data.error || 'Failed', 'error');
+            btn.disabled = false;
+            btn.textContent = '🔮 Start Prediction';
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        toast('Error: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '🔮 Start Prediction';
+    });
+});
+
+function lockPrediction(id) {
+    fetch('/api/predictions/' + id + '/lock', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            toast('Locked!', 'success');
+            location.reload();
+        } else {
+            toast(data.error || 'Failed', 'error');
+        }
+    });
+}
+
+function openResolveModal() {
+    document.getElementById('resolveModal').classList.add('active');
+}
+
+function closeResolveModal() {
+    document.getElementById('resolveModal').classList.remove('active');
+    selectedOutcome = null;
+    document.querySelectorAll('.outcome-btn').forEach(b => b.classList.remove('btn-primary'));
+    document.getElementById('confirmResolveBtn').disabled = true;
+}
+
+// Outcome selection
+document.querySelectorAll('.outcome-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        selectedOutcome = parseInt(this.dataset.outcome);
+        document.querySelectorAll('.outcome-btn').forEach(b => {
+            b.classList.remove('btn-primary');
+            b.classList.add('btn-secondary');
+        });
+        this.classList.remove('btn-secondary');
+        this.classList.add('btn-primary');
+        document.getElementById('confirmResolveBtn').disabled = false;
+    });
+});
+
+document.getElementById('confirmResolveBtn').addEventListener('click', function() {
+    if (selectedOutcome === null || !activePredictionId) return;
+    
+    this.disabled = true;
+    this.textContent = 'Resolving...';
+    
+    fetch('/api/predictions/' + activePredictionId + '/resolve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({winning_outcome: selectedOutcome})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            toast('Resolved!', 'success');
+            location.reload();
+        } else {
+            toast(data.error || 'Failed', 'error');
+            this.disabled = false;
+            this.textContent = 'Confirm Winner';
+        }
+    });
+});
+
+function cancelPrediction(id) {
+    if (!confirm('Cancel and refund all bets?')) return;
+    
+    fetch('/api/predictions/' + id + '/cancel', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            toast('Cancelled', 'success');
+            location.reload();
+        } else {
+            toast(data.error || 'Failed', 'error');
+        }
+    });
+}
+
+function savePredSettings() {
+    fetch('/api/predictions/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            enabled: document.getElementById('predictionsEnabled').checked,
+            min_bet: parseInt(document.getElementById('minBet').value),
+            max_bet: parseInt(document.getElementById('maxBet').value)
+        })
+    })
+    .then(r => r.json())
+    .then(data => toast(data.success ? 'Saved!' : 'Failed', data.success ? 'success' : 'error'));
+}
+
+// Auto-refresh stats every 5 seconds if prediction is active
+{% if active_prediction %}
+setInterval(function() {
+    fetch('/api/predictions/active')
+    .then(r => r.json())
+    .then(data => {
+        if (!data.active) {
+            location.reload();
+            return;
+        }
+        document.getElementById('totalPool').textContent = (data.total_pool || 0) + ' points';
+        document.getElementById('totalBets').textContent = data.total_bets || 0;
+        
+        for (let i = 0; i < (data.outcomes || []).length; i++) {
+            const pts = document.getElementById('points-' + i);
+            const bets = document.getElementById('bets-' + i);
+            if (pts) pts.textContent = ((data.outcome_stats || {})[i]?.amount || 0) + ' pts';
+            if (bets) bets.textContent = ((data.outcome_stats || {})[i]?.bets || 0) + ' bets';
+        }
+    });
+}, 5000);
+{% endif %}
+</script>
+{% endblock %}

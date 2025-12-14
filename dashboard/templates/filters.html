@@ -37,7 +37,8 @@
     </div>
 </div>
 
-<form method="POST" action="{{ url_for('filters_page') }}" id="filtersForm">
+<form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('filters_page') }}" id="filtersForm">
 <input type="hidden" name="action" value="save_filters">
 <input type="hidden" name="global_sensitivity" id="globalSensitivity" value="{{ settings.global_sensitivity or 'medium' }}">
 
@@ -417,7 +418,8 @@
             </div>
             <div class="card-body">
                 <p class="filter-description">Links from these domains will always be allowed.</p>
-                <form method="POST" action="{{ url_for('filters_page') }}" class="add-domain-form">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('filters_page') }}" class="add-domain-form">
                     <input type="hidden" name="action" value="add_link">
                     <input type="hidden" name="list_type" value="whitelist">
                     <div class="input-group">
@@ -451,7 +453,8 @@
             </div>
             <div class="card-body">
                 <p class="filter-description">Links from these domains will always be blocked.</p>
-                <form method="POST" action="{{ url_for('filters_page') }}" class="add-domain-form">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('filters_page') }}" class="add-domain-form">
                     <input type="hidden" name="action" value="add_link">
                     <input type="hidden" name="list_type" value="blacklist">
                     <div class="input-group">

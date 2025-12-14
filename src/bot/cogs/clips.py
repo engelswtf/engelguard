@@ -436,75 +436,75 @@ class ClipsCog(commands.Cog):
             logger.error("Error updating game: %s", e)
             await ctx.send(f"@{ctx.author.name} An error occurred while updating the game.")
 
-    @commands.command(name="shoutout", aliases=["so"])
-    @is_moderator()
-    @cooldown(rate=30.0, bucket=CooldownBucket.CHANNEL)
-    async def shoutout(self, ctx: Context, username: str | None = None) -> None:
-        """
-        Give a shoutout to another streamer.
-
-        Usage: !shoutout @username
-        Example: !shoutout @coolstreamer
-
-        Moderator-only command.
-        """
-        if not username:
-            await ctx.send(f"@{ctx.author.name} Usage: !shoutout @username")
-            return
-
-        # Clean up username
-        target = username.lstrip("@").lower()
-
-        # Get target user info
-        try:
-            users = await self.bot.fetch_users(names=[target])
-            if not users:
-                await ctx.send(f"@{ctx.author.name} User '{target}' not found.")
-                return
-
-            user = users[0]
-            display_name = user.display_name or user.name
-
-            # Try to get their last played game
-            session = await self._get_session()
-            token = await self._get_app_access_token()
-            
-            last_game = "an awesome game"
-            
-            if token:
-                headers = {
-                    "Authorization": f"Bearer {token}",
-                    "Client-Id": self.bot.config.client_id,
-                }
-                
-                # Check if they're live
-                async with session.get(
-                    "https://api.twitch.tv/helix/streams",
-                    headers=headers,
-                    params={"user_login": target},
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        if data.get("data"):
-                            last_game = data["data"][0].get("game_name", "an awesome game")
-                        else:
-                            # Get channel info for last game
-                            async with session.get(
-                                "https://api.twitch.tv/helix/channels",
-                                headers=headers,
-                                params={"broadcaster_id": str(user.id)},
-                            ) as ch_resp:
-                                if ch_resp.status == 200:
-                                    ch_data = await ch_resp.json()
-                                    if ch_data.get("data"):
-                                        last_game = ch_data["data"][0].get("game_name", "an awesome game")
-
-            await ctx.send(
-                f"Go check out @{display_name}! They were last playing {last_game} "
-                f"at twitch.tv/{target} 💜"
-            )
-
-        except Exception as e:
+# DISABLED - moved to shoutout.py cog:     @commands.command(name="shoutout", aliases=["so"])
+# DISABLED - moved to shoutout.py cog:     @is_moderator()
+# DISABLED - moved to shoutout.py cog:     @cooldown(rate=30.0, bucket=CooldownBucket.CHANNEL)
+# DISABLED - moved to shoutout.py cog:     async def shoutout(self, ctx: Context, username: str | None = None) -> None:
+# DISABLED - moved to shoutout.py cog:         """
+# DISABLED - moved to shoutout.py cog:         Give a shoutout to another streamer.
+# DISABLED - moved to shoutout.py cog: 
+# DISABLED - moved to shoutout.py cog:         Usage: !shoutout @username
+# DISABLED - moved to shoutout.py cog:         Example: !shoutout @coolstreamer
+# DISABLED - moved to shoutout.py cog: 
+# DISABLED - moved to shoutout.py cog:         Moderator-only command.
+# DISABLED - moved to shoutout.py cog:         """
+# DISABLED - moved to shoutout.py cog:         if not username:
+# DISABLED - moved to shoutout.py cog:             await ctx.send(f"@{ctx.author.name} Usage: !shoutout @username")
+# DISABLED - moved to shoutout.py cog:             return
+# DISABLED - moved to shoutout.py cog: 
+# DISABLED - moved to shoutout.py cog:         # Clean up username
+# DISABLED - moved to shoutout.py cog:         target = username.lstrip("@").lower()
+# DISABLED - moved to shoutout.py cog: 
+# DISABLED - moved to shoutout.py cog:         # Get target user info
+# DISABLED - moved to shoutout.py cog:         try:
+# DISABLED - moved to shoutout.py cog:             users = await self.bot.fetch_users(names=[target])
+# DISABLED - moved to shoutout.py cog:             if not users:
+# DISABLED - moved to shoutout.py cog:                 await ctx.send(f"@{ctx.author.name} User '{target}' not found.")
+# DISABLED - moved to shoutout.py cog:                 return
+# DISABLED - moved to shoutout.py cog: 
+# DISABLED - moved to shoutout.py cog:             user = users[0]
+# DISABLED - moved to shoutout.py cog:             display_name = user.display_name or user.name
+# DISABLED - moved to shoutout.py cog: 
+# DISABLED - moved to shoutout.py cog:             # Try to get their last played game
+# DISABLED - moved to shoutout.py cog:             session = await self._get_session()
+# DISABLED - moved to shoutout.py cog:             token = await self._get_app_access_token()
+# DISABLED - moved to shoutout.py cog:             
+# DISABLED - moved to shoutout.py cog:             last_game = "an awesome game"
+# DISABLED - moved to shoutout.py cog:             
+# DISABLED - moved to shoutout.py cog:             if token:
+# DISABLED - moved to shoutout.py cog:                 headers = {
+# DISABLED - moved to shoutout.py cog:                     "Authorization": f"Bearer {token}",
+# DISABLED - moved to shoutout.py cog:                     "Client-Id": self.bot.config.client_id,
+# DISABLED - moved to shoutout.py cog:                 }
+# DISABLED - moved to shoutout.py cog:                 
+# DISABLED - moved to shoutout.py cog:                 # Check if they're live
+# DISABLED - moved to shoutout.py cog:                 async with session.get(
+# DISABLED - moved to shoutout.py cog:                     "https://api.twitch.tv/helix/streams",
+# DISABLED - moved to shoutout.py cog:                     headers=headers,
+# DISABLED - moved to shoutout.py cog:                     params={"user_login": target},
+# DISABLED - moved to shoutout.py cog:                 ) as resp:
+# DISABLED - moved to shoutout.py cog:                     if resp.status == 200:
+# DISABLED - moved to shoutout.py cog:                         data = await resp.json()
+# DISABLED - moved to shoutout.py cog:                         if data.get("data"):
+# DISABLED - moved to shoutout.py cog:                             last_game = data["data"][0].get("game_name", "an awesome game")
+# DISABLED - moved to shoutout.py cog:                         else:
+# DISABLED - moved to shoutout.py cog:                             # Get channel info for last game
+# DISABLED - moved to shoutout.py cog:                             async with session.get(
+# DISABLED - moved to shoutout.py cog:                                 "https://api.twitch.tv/helix/channels",
+# DISABLED - moved to shoutout.py cog:                                 headers=headers,
+# DISABLED - moved to shoutout.py cog:                                 params={"broadcaster_id": str(user.id)},
+# DISABLED - moved to shoutout.py cog:                             ) as ch_resp:
+# DISABLED - moved to shoutout.py cog:                                 if ch_resp.status == 200:
+# DISABLED - moved to shoutout.py cog:                                     ch_data = await ch_resp.json()
+# DISABLED - moved to shoutout.py cog:                                     if ch_data.get("data"):
+# DISABLED - moved to shoutout.py cog:                                         last_game = ch_data["data"][0].get("game_name", "an awesome game")
+# DISABLED - moved to shoutout.py cog: 
+# DISABLED - moved to shoutout.py cog:             await ctx.send(
+# DISABLED - moved to shoutout.py cog:                 f"Go check out @{display_name}! They were last playing {last_game} "
+# DISABLED - moved to shoutout.py cog:                 f"at twitch.tv/{target} 💜"
+# DISABLED - moved to shoutout.py cog:             )
+# DISABLED - moved to shoutout.py cog: 
+# DISABLED - moved to shoutout.py cog:         except Exception as e:
             logger.error("Error in shoutout: %s", e)
             await ctx.send(f"@{ctx.author.name} Couldn't complete the shoutout.")
 

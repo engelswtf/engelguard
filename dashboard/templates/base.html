@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}EngelGuard Dashboard{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -53,6 +54,10 @@
                     <span class="nav-icon">🔔</span>
                     <span class="nav-text">Chat Alerts</span>
                 </a>
+                <a href="{{ url_for('shoutout_settings') }}" class="nav-item {% if request.endpoint == 'shoutout_settings' %}active{% endif %}" data-tooltip="Shoutouts">
+                    <span class="nav-icon">📢</span>
+                    <span class="nav-text">Shoutouts</span>
+                </a>
                 <a href="{{ url_for('strikes_page') }}" class="nav-item {% if request.endpoint == 'strikes_page' %}active{% endif %}" data-tooltip="Strikes">
                     <span class="nav-icon">⚠️</span>
                     <span class="nav-text">Strikes</span>
@@ -68,6 +73,14 @@
                 <a href="{{ url_for('giveaways_page') }}" class="nav-item {% if request.endpoint == 'giveaways_page' %}active{% endif %}" data-tooltip="Giveaways">
                     <span class="nav-icon">🎁</span>
                     <span class="nav-text">Giveaways</span>
+                </a>
+                <a href="{{ url_for('polls_page') }}" class="nav-item {% if request.endpoint == 'polls_page' %}active{% endif %}" data-tooltip="Polls">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Polls</span>
+                </a>
+                <a href="{{ url_for('predictions_page') }}" class="nav-item {% if request.endpoint == 'predictions_page' %}active{% endif %}" data-tooltip="Predictions">
+                    <span class="nav-icon">🔮</span>
+                    <span class="nav-text">Predictions</span>
                 </a>
                 <a href="{{ url_for('queue_management') }}" class="nav-item {% if request.endpoint == 'queue_management' %}active{% endif %}" data-tooltip="Queue">
                     <span class="nav-icon">📋</span>

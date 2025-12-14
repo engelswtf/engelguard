@@ -21,7 +21,8 @@
             {% endif %}
         {% endwith %}
         
-        <form method="POST" class="login-form">
+        <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> class="login-form">
             <div class="form-group">
                 <label for="password">Password</label>
                 <input type="password" id="password" name="password" 

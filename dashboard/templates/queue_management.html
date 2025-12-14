@@ -16,7 +16,8 @@
         <h2>Default Queue Settings</h2>
     </div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('queue_management_settings') }}" id="settingsForm">
+        <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('queue_management_settings') }}" id="settingsForm">
             <input type="hidden" name="action" value="settings">
             
             <div class="form-row">
@@ -197,7 +198,8 @@
             <h2>Create New Queue</h2>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-        <form method="POST" action="{{ url_for('queue_management_action') }}" id="createForm">
+        <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> action="{{ url_for('queue_management_action') }}" id="createForm">
             <input type="hidden" name="action" value="create">
             
             <div class="form-group">

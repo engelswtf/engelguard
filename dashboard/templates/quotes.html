@@ -85,7 +85,8 @@
             <h2 id="modalTitle">Add Quote</h2>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-        <form method="POST" id="quoteForm">
+        <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> id="quoteForm">
             <input type="hidden" name="action" id="formAction" value="add">
             <input type="hidden" name="quote_id" id="quoteId" value="">
             

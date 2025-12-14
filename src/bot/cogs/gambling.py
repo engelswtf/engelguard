@@ -41,6 +41,9 @@ SLOT_PAYOUTS = {
 # Roulette red numbers
 ROULETTE_RED = {1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36}
 
+# Bug 4 FIX: Maximum winnings cap to prevent integer overflow
+MAX_WINNINGS = 1_000_000
+
 
 class Gambling(commands.Cog):
     """Gambling mini-games cog."""
@@ -116,6 +119,42 @@ class Gambling(commands.Cog):
 
         return True, bet, ""
 
+    def _atomic_bet_deduct(self, user_id: str, channel: str, amount: int) -> tuple[bool, int, str]:
+        """Atomically validate and deduct bet amount. Returns (success, current_points, error_msg).
+        
+        Security Fix: Prevents race condition where users could spam multiple bets
+        before deductions complete by checking AND deducting in a single transaction.
+        """
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Atomic check and deduct in single UPDATE
+            cursor.execute("""
+                UPDATE user_loyalty 
+                SET points = points - ?
+                WHERE user_id = ? AND channel = ? AND points >= ?
+            """, (amount, user_id, channel.lower(), amount))
+            
+            if cursor.rowcount == 0:
+                # Get current balance for error message
+                cursor.execute("""
+                    SELECT points FROM user_loyalty 
+                    WHERE user_id = ? AND channel = ?
+                """, (user_id, channel.lower()))
+                row = cursor.fetchone()
+                current = int(row["points"]) if row else 0
+                return False, current, f"Insufficient points. You have {current:,} points."
+            
+            # Get new balance
+            cursor.execute("""
+                SELECT points FROM user_loyalty 
+                WHERE user_id = ? AND channel = ?
+            """, (user_id, channel.lower()))
+            row = cursor.fetchone()
+            new_balance = int(row["points"]) if row else 0
+            
+            return True, new_balance, ""
+
     def _clean_expired_duels(self, channel: str) -> None:
         """Remove expired duels for a channel."""
         if channel not in self._pending_duels:
@@ -144,8 +183,24 @@ class Gambling(commands.Cog):
         user_id = str(ctx.author.id)
         channel = ctx.channel.name
 
-        valid, bet, error = self._validate_bet(amount, user_id, channel)
-        if not valid:
+        # Validate bet amount (min/max only, not balance - that's checked atomically)
+        try:
+            bet = int(amount)
+        except ValueError:
+            await ctx.send(f"@{ctx.author.name} Invalid amount. Use a number.")
+            return
+
+        if bet < self.min_bet:
+            await ctx.send(f"@{ctx.author.name} Minimum bet is {self.min_bet} points.")
+            return
+
+        if bet > self.max_bet:
+            await ctx.send(f"@{ctx.author.name} Maximum bet is {self.max_bet} points.")
+            return
+
+        # Security Fix: Atomic bet deduction to prevent race condition
+        success, balance, error = self._atomic_bet_deduct(user_id, channel, bet)
+        if not success:
             await ctx.send(f"@{ctx.author.name} {error}")
             return
 
@@ -162,8 +217,10 @@ class Gambling(commands.Cog):
             multiplier = 1.5  # Two matching
 
         if multiplier > 0:
-            winnings = int(bet * multiplier)
-            new_balance = self._update_points(user_id, ctx.author.name, channel, winnings - bet)
+            # Bug 4 FIX: Cap winnings to prevent integer overflow
+            # Note: bet already deducted, so add back bet + winnings
+            winnings = min(int(bet * multiplier), MAX_WINNINGS)
+            new_balance = self._update_points(user_id, ctx.author.name, channel, winnings)
             await ctx.send(
                 f"@{ctx.author.name} 🎰 {display} 🎰 YOU WIN! +{winnings} points! "
                 f"(Balance: {int(new_balance)})"
@@ -174,10 +231,10 @@ class Gambling(commands.Cog):
                     ctx.author.name, winnings, multiplier, channel
                 )
         else:
-            new_balance = self._update_points(user_id, ctx.author.name, channel, -bet)
+            # Bet already deducted atomically, just report the balance
             await ctx.send(
                 f"@{ctx.author.name} 🎰 {display} 🎰 No luck! -{bet} points. "
-                f"(Balance: {int(new_balance)})"
+                f"(Balance: {balance})"
             )
 
     @commands.command(name="gamble", aliases=["bet"])
@@ -194,24 +251,41 @@ class Gambling(commands.Cog):
         user_id = str(ctx.author.id)
         channel = ctx.channel.name
 
-        valid, bet, error = self._validate_bet(amount, user_id, channel)
-        if not valid:
+        # Validate bet amount (min/max only, not balance - that's checked atomically)
+        try:
+            bet = int(amount)
+        except ValueError:
+            await ctx.send(f"@{ctx.author.name} Invalid amount. Use a number.")
+            return
+
+        if bet < self.min_bet:
+            await ctx.send(f"@{ctx.author.name} Minimum bet is {self.min_bet} points.")
+            return
+
+        if bet > self.max_bet:
+            await ctx.send(f"@{ctx.author.name} Maximum bet is {self.max_bet} points.")
+            return
+
+        # Security Fix: Atomic bet deduction to prevent race condition
+        success, balance, error = self._atomic_bet_deduct(user_id, channel, bet)
+        if not success:
             await ctx.send(f"@{ctx.author.name} {error}")
             return
 
         # 50/50 chance
         if random.random() < 0.5:
+            # Win: return bet + winnings (bet * 2 total, so add bet back)
             winnings = bet
-            new_balance = self._update_points(user_id, ctx.author.name, channel, winnings)
+            new_balance = self._update_points(user_id, ctx.author.name, channel, winnings * 2)
             await ctx.send(
                 f"@{ctx.author.name} 🎲 You WON! +{winnings} points! "
                 f"(Balance: {int(new_balance)})"
             )
         else:
-            new_balance = self._update_points(user_id, ctx.author.name, channel, -bet)
+            # Lose: bet already deducted atomically
             await ctx.send(
                 f"@{ctx.author.name} 🎲 You lost! -{bet} points. "
-                f"(Balance: {int(new_balance)})"
+                f"(Balance: {balance})"
             )
 
     @commands.command(name="roulette")
@@ -228,9 +302,19 @@ class Gambling(commands.Cog):
         user_id = str(ctx.author.id)
         channel = ctx.channel.name
 
-        valid, bet, error = self._validate_bet(amount, user_id, channel)
-        if not valid:
-            await ctx.send(f"@{ctx.author.name} {error}")
+        # Validate bet amount (min/max only, not balance - that's checked atomically)
+        try:
+            bet = int(amount)
+        except ValueError:
+            await ctx.send(f"@{ctx.author.name} Invalid amount. Use a number.")
+            return
+
+        if bet < self.min_bet:
+            await ctx.send(f"@{ctx.author.name} Minimum bet is {self.min_bet} points.")
+            return
+
+        if bet > self.max_bet:
+            await ctx.send(f"@{ctx.author.name} Maximum bet is {self.max_bet} points.")
             return
 
         choice = choice.lower()
@@ -246,6 +330,12 @@ class Gambling(commands.Cog):
             else:
                 await ctx.send(f"@{ctx.author.name} Invalid choice. Use red/black/green or 0-36.")
                 return
+
+        # Security Fix: Atomic bet deduction to prevent race condition
+        success, balance, error = self._atomic_bet_deduct(user_id, channel, bet)
+        if not success:
+            await ctx.send(f"@{ctx.author.name} {error}")
+            return
 
         # Spin the wheel (0-36)
         result = random.randint(0, 36)
@@ -268,8 +358,10 @@ class Gambling(commands.Cog):
         color_emoji = "🟢" if color == "green" else ("🔴" if color == "red" else "⚫")
 
         if multiplier > 0:
-            winnings = int(bet * multiplier)
-            new_balance = self._update_points(user_id, ctx.author.name, channel, winnings - bet)
+            # Bug 4 FIX: Cap winnings to prevent integer overflow
+            # Note: bet already deducted, so add back bet + winnings
+            winnings = min(int(bet * multiplier), MAX_WINNINGS)
+            new_balance = self._update_points(user_id, ctx.author.name, channel, winnings)
             await ctx.send(
                 f"@{ctx.author.name} {color_emoji} {result} ({color}) - YOU WIN! "
                 f"+{winnings} points! (Balance: {int(new_balance)})"
@@ -280,10 +372,10 @@ class Gambling(commands.Cog):
                     ctx.author.name, winnings, multiplier, channel
                 )
         else:
-            new_balance = self._update_points(user_id, ctx.author.name, channel, -bet)
+            # Bet already deducted atomically
             await ctx.send(
                 f"@{ctx.author.name} {color_emoji} {result} ({color}) - You lose! "
-                f"-{bet} points. (Balance: {int(new_balance)})"
+                f"-{bet} points. (Balance: {balance})"
             )
 
     @commands.command(name="duel")

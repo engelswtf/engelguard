@@ -4,7 +4,8 @@
 {% block page_title %}Settings{% endblock %}
 
 {% block content %}
-<form method="POST" class="settings-form">
+<form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> class="settings-form">
     <div class="settings-grid">
         <!-- Bot Settings -->
         <div class="card">

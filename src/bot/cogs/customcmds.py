@@ -33,6 +33,18 @@ logger = get_logger(__name__)
 # Permission levels in order
 PERMISSION_LEVELS = ['everyone', 'follower', 'subscriber', 'vip', 'moderator', 'owner']
 
+# Protected command names that cannot be used as custom commands or aliases
+PROTECTED_COMMANDS = {
+    'help', 'commands', 'points', 'gamble', 'slots', 'roulette', 'duel',
+    'giveaway', 'enter', 'quote', 'addquote', 'poll', 'vote', 'predict', 'bet',
+    'sr', 'songrequest', 'skip', 'queue', 'np', 'nowplaying',
+    'followage', 'uptime', 'title', 'game', 'shoutout', 'so',
+    'timeout', 'ban', 'unban', 'permit', 'nuke',
+    'addcmd', 'editcmd', 'delcmd', 'cmdalias', 'cmdinfo',
+    'timer', 'addtimer', 'deltimer', 'timers',
+    'filter', 'automod', 'settings', 'bot'
+}
+
 
 class CustomCommands(commands.Cog):
     """
@@ -65,13 +77,13 @@ class CustomCommands(commands.Cog):
         is_mod: bool,
         is_vip: bool,
         is_subscriber: bool,
-        is_follower: bool = True  # Assume follower if we cant check
+        is_follower: bool = None  # Assume follower if we cant check
     ) -> bool:
         """Check if user meets permission requirement."""
         if required_level == "everyone":
             return True
         if required_level == "follower":
-            return is_follower or is_subscriber or is_vip or is_mod or is_owner
+            return (is_follower is True) or is_subscriber or is_vip or is_mod or is_owner
         if required_level == "subscriber":
             return is_subscriber or is_vip or is_mod or is_owner
         if required_level == "vip":
@@ -206,7 +218,7 @@ class CustomCommands(commands.Cog):
     @is_moderator()
     async def add_command(self, ctx: Context, name: str = "", *, response: str = "") -> None:
         """
-        Add a new custom command.
+        Add a new custom command with name collision detection.
         
         Usage: !addcmd <name> <response>
         Example: !addcmd hello Hello $(user)! Welcome to the stream!
@@ -216,6 +228,11 @@ class CustomCommands(commands.Cog):
             return
         
         name = name.lower().lstrip("!")
+        
+        # SECURITY: Check for collision with protected commands
+        if name in PROTECTED_COMMANDS:
+            await ctx.send(f"@{ctx.author.name} Cannot create command '!{name}' - it's a protected command name.")
+            return
         
         # Check if command already exists
         existing = self.db.get_command(name)
@@ -375,7 +392,7 @@ class CustomCommands(commands.Cog):
     @is_moderator()
     async def set_aliases(self, ctx: Context, name: str = "", *, aliases: str = "") -> None:
         """
-        Set aliases for a command.
+        Set command aliases with collision detection.
         
         Usage: !cmdalias <name> <alias1> <alias2> ...
         Use !cmdalias <name> clear to remove all aliases
@@ -390,6 +407,18 @@ class CustomCommands(commands.Cog):
             alias_list = []
         else:
             alias_list = [a.lower().lstrip("!") for a in aliases.split() if a]
+        
+        # SECURITY: Check for collisions with protected commands
+        for alias in alias_list:
+            if alias in PROTECTED_COMMANDS:
+                await ctx.send(f"@{ctx.author.name} Cannot use '{alias}' as alias - it's a protected command name.")
+                return
+            
+            # Check if alias exists as another custom command
+            existing = self.db.get_command(alias)
+            if existing and existing["name"].lower() != name.lower():
+                await ctx.send(f"@{ctx.author.name} Alias '{alias}' is already used by command '!{existing['name']}'")
+                return
         
         if self.db.update_command(name, aliases=alias_list):
             if alias_list:

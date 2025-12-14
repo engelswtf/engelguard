@@ -15,6 +15,7 @@
     </div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('banned_words_page') }}" class="add-word-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="add">
             <div class="form-row">
                 <div class="form-group" style="flex: 2;">
@@ -60,6 +61,7 @@
     <div class="card-body">
         <div class="import-export-row">
             <form method="POST" action="{{ url_for('banned_words_page') }}" enctype="multipart/form-data" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="import">
                 <input type="file" name="import_file" accept=".json,.txt" id="importFile" style="display: none;" onchange="this.form.submit()">
                 <button type="button" class="btn btn-secondary" onclick="document.getElementById('importFile').click()">
@@ -128,6 +130,7 @@
                         </td>
                         <td class="actions-cell">
                             <form method="POST" action="{{ url_for('banned_words_page') }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <input type="hidden" name="action" value="toggle">
                                 <input type="hidden" name="word_id" value="{{ word.id }}">
                                 <button type="submit" class="btn btn-small btn-secondary">
@@ -135,6 +138,7 @@
                                 </button>
                             </form>
                             <form method="POST" action="{{ url_for('banned_words_page') }}" style="display: inline;" onsubmit="return confirm('Delete this banned word?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="word_id" value="{{ word.id }}">
                                 <button type="submit" class="btn btn-small btn-danger">Delete</button>

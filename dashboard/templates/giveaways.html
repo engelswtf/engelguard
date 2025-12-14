@@ -161,7 +161,8 @@
             <h2>Start Giveaway</h2>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-        <form method="POST" id="giveawayForm">
+        <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> id="giveawayForm">
             <input type="hidden" name="action" value="start">
             
             <div class="form-group">

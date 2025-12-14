@@ -23,6 +23,7 @@
     </div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('alerts_settings') }}" id="globalSettingsForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="global_settings">
             <input type="hidden" name="alerts_enabled" id="alertsEnabledInput" value="{{ 'on' if settings.alerts_enabled else '' }}">
             <div class="form-row">
@@ -38,6 +39,7 @@
 </div>
 
 <form method="POST" action="{{ url_for('alerts_settings') }}" id="alertsForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 <input type="hidden" name="action" value="save_alerts">
 
 <!-- Follow Alerts -->

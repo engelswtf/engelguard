@@ -94,6 +94,10 @@ class TwitchBot(commands.Bot):
             ("bot.cogs.gambling", True),  # Gambling mini-games
             ("bot.cogs.queue", True),  # Viewer queue system
             ("bot.cogs.alerts", True),  # Chat alerts for follows, subs, raids, bits
+            ("bot.cogs.polls", True),  # Polls system
+            ("bot.cogs.predictions", True),  # Predictions system
+            ("bot.cogs.shoutout", True),  # Shoutout, watchtime, and first-chatter
+            ("bot.cogs.dashboard_bridge", True),  # Dashboard-to-bot message bridge
         ]
 
         for cog_path, enabled in cogs_to_load:
